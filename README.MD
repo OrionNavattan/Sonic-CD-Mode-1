@@ -14,9 +14,9 @@ FMV binaries, OGGs and a cue sheet for use with emulators. Support for CD-DA pas
 as is switching between them and the CD-DA past tracks in the game's settings. Church of Kondo's 
 remasters of the JP past tracks and King Meteor's US Past concepts are included in the repository. 
 As a bonus, FM-PSG-PCM versions of the JP Present and Future tracks are included, enabling the 
-game to run in a reduced functionality mode if no disc is detected.
+game to run in a reduced functionality mode without a disc.
 
-Support is included for both the SEGA CD internal RAM and cartridge SRAM, as is transferring
+Support is included for both the SEGA CD internal save RAM and cartridge SRAM, as is transferring
 saves between them, and loading saves made by the Mode 2 version. The Mega CD RAM Cart is, 
 of course, not supported.
 

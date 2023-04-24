@@ -87,7 +87,8 @@ FM_PCM_Playlist:
 		
 Get_PCM:
 		move.b	FM_PCM_Playlist(pc,d0.w),(mcd_maincom_1_lo).l	; get track ID for PCM music
-		move.w	#id_SubCmd_PlayPCMMusic,(mcd_com_cmd_0).l		; send command to sub-CPU
+		move.w	#id_SubCmd_PlayPCMMusic,d0
+		move.w	d0,(mcd_maincom_0).l		; send command to sub-CPU
 	
 	.waitsubCPU1:	
 		move.w	(mcd_subcom_0).l,d0		; has the Sub CPU received and processed the command?

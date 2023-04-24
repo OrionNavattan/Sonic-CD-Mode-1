@@ -2,10 +2,7 @@
 ; |					       Sonic the Hedgehog CD Mode 1						|
 ;  =========================================================================
 
-; Based on the disassembly of the Mode 2 original by Ralakaimus.
-; Includes Clownancy's ported Sonic 3 Z80 sound driver,
-; Ralakaimus' Mega CD Mode 1 init library,
-; and Vladikcomper's optimized Nemdec and Kosdec routines.
+; Based on the partial disassembly of the Mode 2 original by Devon.
 
 ;  =========================================================================
 
@@ -13,11 +10,13 @@
 		opt	l.					; . is the local label symbol
 		opt	ae-					; automatic evens are disabled by default
 		opt	ws+					; allow statements to contain white-spaces
+		opt	an+					; allow use of -h for hexadecimal (used in Z80 code)
 		opt	w+					; print warnings
 		opt	m+					; do not expand macros - if enabled, this can break assembling
 		
-Main	section org(0)
-
+Main:	group word,org(0) ; we have to use the long form of group declaration to avoid triggering an overlay warning during assembly
+		section MainProgram,Main
+		
 FixBugs = 0		; Leave at 0 to preserve a handful of bugs and oddities in the original game.
 				; Set to 1 to fix them.
 				
@@ -27,14 +26,22 @@ FixBugs = 0		; Leave at 0 to preserve a handful of bugs and oddities in the orig
 		include "Macros - More CPUs.asm"	; Z80 support macros
 		cpu 68000
 		
-		include "Main CPU Hardware.asm" 			; Main CPU hardware addresses, including CD gate array, and hardware function macros
-		include "Common Macros.asm"					; Macros common to both main and sub CPU programs
-		include "Main CPU Macros.asm"				; Main CPU program macros
-		include "Main CPU Constants.asm"			; Main CPU program constants
-		include "Main CPU RAM Addresses.asm"		; Main CPU variables
-		
+			
+		include "Mega Drive.asm" 					; standard Mega Drive hardware addresses and function macros
+		include "Mega CD Mode 1 Main CPU.asm"		; Mega CD Mode 1 main CPU hardware addresses and function macros
+		include "Common Macros.asm"					; macros common to both main and sub CPU programs
+		include "Main CPU Macros.asm"	
 		include "SpritePiece.asm"					; Sprite mapping macros
-		include "SMPS2ASM.asm"						; SMPS2ASM
+		include "File List.asm"
+		include "Main CPU Constants.asm"
+		include "Main CPU RAM Addresses.asm"
+		include "VRAM Addresses.asm"
+
+		include "sound/Main CPU Sound Equates.asm"
+		include "sound/Main CPU Frequency, Note, Envelope, & Sample Definitions.asm" ; definitions used in both the Z80 sound driver and SMPS2ASM
+		include "sound/Sound Language.asm" ; SMPS2ASM macros and conversion functionality
+		include "sound/FM and PSG Sounds.asm"
+		include "sound/PCM Sounds.asm"
 		
 ROM_Start:
    if * <> 0
@@ -91,7 +98,7 @@ Header:
 		dc.b	"GM MK-4407-00   "
     endc
 Checksum:	dc.w $0000			; Checksum
-		dc.b 'JC              ' ; I/O Support
+		dc.b 'JC              ' ; I/O Support : joypad and CD-ROM
 ROMStartLoc:	dc.l Rom_Start			; ROM Start
 ROMEndLoc:	dc.l $FFFFF		
 					; ROM End
@@ -107,9 +114,7 @@ EndOfHeader:
 ; ============================================		
 		
 		include "includes/main/Mega Drive Setup.asm" ; EntryPoint
-	
-		
-		
+
 		
 		bsr.w	FindMCDBIOS			; Find the MCD's BIOS
 		bcs.s	.notfound				; If it wasn't found, branch
@@ -130,4 +135,42 @@ EndOfHeader:
 		bsr.w	SendMCDInt2			; Send MCD INT2 request
 		...
 		
+		bsr.w	SoundDriverLoad
+		
 		include "includes/main/Mega CD Mode 1.asm"
+
+
+gmptr:		macro
+		id_\1:	equ offset(*)-GameModeArray
+		if narg=1
+		bra.w	GM_\1
+		else
+		bra.w	GM_\2
+		endc
+		endm
+
+		
+GameModeArray:
+
+		gmptr	Sega			; 0
+		gmptr	Title			; 4
+		gmptr	Demo, Level		; 8
+		gmptr	Level			; $C
+		gmptr 	TimeWarp
+		gmptr	SpecialStage
+		gmptr	BURAM_SRAMManager	
+		gmptr	DAGarden
+		gmptr	FMV		
+		gmptr 	SoundTest
+		gmptr	EasterEgg		
+		gmptr 	StageSelect
+		gmptr	BestStaffTimes
+				
+		
+		
+		
+		
+		
+		
+		
+		

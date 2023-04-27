@@ -32,7 +32,7 @@ word_ram_IMG:		equ	$620000	; when wordram is used as output space for MCD graphi
 word_ram_IMG_end:	equ	$640000
 
 sizeof_cd_bios:		equ cd_bios_end-cd_bios
-sizeof_program_ram_window:	equ	program_ram_end-program_ram	
+sizeof_program_ram_window:	equ	$20000
 sizeof_word_ram_1M:	equ	word_ram_1M_end-word_ram_1M	; MCD Word RAM size (1M/1M)
 sizeof_word_ram_2M:	equ	word_ram_2M_end-word_ram_2M	; MCD Word RAM size (2M)
 sizeof_word_ram_IMG:	equ	word_ram_IMG_end-word_ram_IMG	; MCD VRAM image of Word RAM size (1M/1M)
@@ -60,13 +60,13 @@ mcd_mem_mode:		equ	$A12003 ; word RAM swap and program RAM bankswitch registers;
 	program_ram_bank_2:		equ 7
 	program_ram_bank:		equ (1<<program_ram_bank_1)|(1<<program_ram_bank_2) ; $C0
 	
-mcd_cd_controller_mode:		equ	$A12004 ; CD data controller mode and device destination register
+mcd_cd_controller_mode:		equ	$A12004 ; CD data controller mode and destination select register
 	cd_destination:		equ 7	; bits 0-2, destination of CD data read
 	cd_dest_main:		equ	2	; main CPU read from mcd_cdc_host
 	cd_dest_sub:		equ 3	; sub CPU read from mcd_cdc_host
 	cd_dest_pcm:		equ 4	; DMA to PCM sound source
 	cd_dest_prgram:		equ 5	; DMA to program RAM
-	cd+dest_wordram:	equ 7	; DMA to word RAM
+	cd_dest_wordram:	equ 7	; DMA to word RAM
 	
 	hibyte_ready_bit:	equ 5	; set when upper byte is sent from CD controller, cleared once full word is ready
 	data_ready_bit:		equ 6	; set once full word of data is ready

@@ -23,7 +23,7 @@ pcm_ctrl:		equ	$FF000F	; PCM control register
 	waveram_buffer_bit:	equ 3	; when clear, accessing channels 1-4, when set, accessing channels 5-8
 	
 	mod_bit:		equ 6	; controls the function of bits 0-3, see above for explanation
-	pcm_onoff_bit:	equ 7	; enable or disable all channels
+	pcm_onoff_bit:	equ 7	; enable or disable all channels (be warned, waveram writes may not work correctly if sounding is disabled with this )
 pcm_channel_onoff:	equ	$FF0011	; mute a single channel by setting the bit of this register corresponding to its ID
 	
 

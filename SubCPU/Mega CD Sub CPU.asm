@@ -1,5 +1,5 @@
 ; ---------------------------------------------------------------------------
-; Mega CD Mode 1 Sub CPU hardware addresses and BIOS Functions
+; Mega CD Mode 1 Sub CPU hardware addresses, entry points, and BIOS Functions
 ; ---------------------------------------------------------------------------
 
 program_ram:		equ	0 ; Mega CD Program RAM
@@ -18,8 +18,8 @@ word_ram_1M_end:	equ	$E0000	; MCD Word RAM end (1M/1M)
 backup_ram:			equ	$FE0000	; Mega CD backup RAM (only odd bytes accessible)
 backup_ram_end:		equ $FE3FFF	
 
-mcd_control_registers:		equ $FFFF8000			; Mega CD gate array
-mcd_led_control:			equ	$FFFF8000 ; LED control register (BIOS control only)
+mcd_control_registers:		equ $FFFF8000 ; Mega CD gate array
+mcd_led_control:			equ	$FFFF8000 ; LED control register; user access prohibited
 	red_led_bit:	equ	0 ; enable/disable red LED
 	green_led_bit:	equ	1 ; enable/disable red LED
 	red_led:		equ 1<<red_led_bit
@@ -45,7 +45,7 @@ mcd_mem_mode:		equ $FFFF8003 ; word ram mode/swap and priority mode registers; f
 	priority_underwrite:		equ 1<<priority_underwrite_bit
 	priority_overwrite:			equ 1<<priority_overwrite_bit			 
 	
-mcd_cdc_mode:		equ $FFFF8004; CD data controller mode and device destination register
+mcd_cd_controller_mode:		equ $FFFF8004; CD data controller mode and destination select register
 	cd_destination:		equ 7	; bits 0-2, destination of CD data read
 	cd_dest_main:		equ	2	; main CPU read from mcd_cdc_host
 	cd_dest_sub:		equ 3	; sub CPU read from mcd_cdc_host
@@ -57,9 +57,9 @@ mcd_cdc_mode:		equ $FFFF8004; CD data controller mode and device destination reg
 	data_ready_bit:		equ 6	; set once full word of data is ready
 	data_end_bit:		equ 7	; set once the data read is finished
 	
-mcd_cdc_rs0:		equ	$FFFF8005 ; CDC control registers, user use prohibited
+mcd_cdc_rs0:		equ	$FFFF8005 ; CD data controller control registers, user access prohibited
 ; $FFFF0006 unused
-mcd_cdc_rs1:		equ	$FFFF8007 ; CDC control registers, user use prohibited
+mcd_cdc_rs1:		equ	$FFFF8007 ; CD data controller control registers, user access prohibited
 
 mcd_cdc_host:		equ	$FFFF8008 ; CD data out for sub CPU read
 mcd_cdc_dma_dest:	equ	$FFFF800A ; CDC DMA destination address
@@ -108,12 +108,13 @@ mcd_subcom_6_lo:	equ $FFFF802D ; Communication status 6
 mcd_subcom_7:		equ $FFFF802E ; Communication status 7
 mcd_subcom_7_lo:	equ $FFFF802F ; Communication status 7
 
-mcd_timer_interrupt:	equ	$FFFF8031 ; IRQ 3 timer; counts down from the 8-bit value written, triggers IRQ 3 when it reaches 0
+mcd_timer_interrupt:	equ	$FFFF8031 ; IRQ 3 timer; counts down from the 8-bit value written to this register, triggers IRQ 3 when it reaches 0
 
 mcd_interrupt_control:	equ	$FFFF8032 	; enable/disable triggering of interrupts (NOT the same as the interrupts in the 68K status register)
-	; WARNING: ONLY levels 1 and 3 are user-configurable when BIOS is in use.
+	; WARNING: ONLY levels 1 and 3 are user-configurable when BIOS is in use. DO NOT CHANGE
+	; ANY OTHERS: DOING SO WILL CAUSE THE BIOS TO MALFUNCTION.
 	graphics_done_int:	equ 1	; triggered in 1M mode when a graphics operation is complete
-	sub_vblank_int:		equ 2	; interrupt triggered by main CPU, usually on VBlank
+	sub_vblank_int:		equ 2	; interrupt triggered by main CPU, generally on VBlank
 	timer_int:			equ 3	; triggered when timer set with mcd_timer_interrupt reaches 0
 	cdd_int:			equ 4	; triggered by CD drive when reception of receiving status 7 is complete
 	cdc_int:			equ 5	; triggered by CD data controller when error correction is complete
@@ -176,102 +177,13 @@ gfx_imgoffset:	equ	$FFFF8060 	; image buffer offset
 gfx_img_hsize:	equ	$FFFF8062 	; image buffer width in pixels
 gfx_img_vsize: 	equ	$FFFF8064 	; image buffer height in pixels
 
-gfx_tracetbl:	equ	$FFFF8066 	; trace vector base address
+gfx_tracetbl:	equ	$FFFF8066 	; trace vector base address (writing this also triggers the start of a graphics operation)
 
 ; Subcode registers
 ; User access prohibited.
-mcd_subcode_addr:	equ	$FFFF8068 						; subcode top address
+mcd_subcode_addr:	equ	$FFFF8068 		; subcode top address
 mcd_subcode:		equ	$FFFF8100 		; 64 word subcode buffer
 mcd_subcode_mirror:	equ	equ	$FFFF8108  	; mirror of subcode buffer
-
-; -------------------------------------------------------------------------
-; BIOS function calls
-; -------------------------------------------------------------------------
-
-;		rsset 2
-
-MSCSTOP		equ	$02
-MSCPAUSEON	equ	$03
-MSCPAUSEOFF	equ	$04
-MSCSCANFF	equ	$05
-MSCSCANFR	equ	$06
-MSCSCANOFF	equ	$07
-
-ROMPAUSEON	equ	$08
-ROMPAUSEOFF	equ	$09
-
-DRVOPEN		equ	$0A	; open the disc tray on Mega CD Model 1s and Pioneer LaserActive; wait for user to open drive door on all other devices
-DRVINIT		equ	$10
-
-MSCPLAY		equ	$11
-MSCPLAY1	equ	$12
-MSCPLAYR	equ	$13
-MSCPLAYT	equ	$14
-MSCSEEK		equ	$15
-MSCSEEKT	equ	$16
-
-ROMREAD		equ	$17
-ROMSEEK		equ	$18
-
-MSCSEEK1	equ	$19
-TESTENTRY	equ	$1E
-TESTENTRYLOOP	equ	$1F
-
-ROMREADN	equ	$20
-ROMREADE	equ	$21
-
-CDBCHK		equ	$80
-CDBSTAT		equ	$81
-CDBTOCWRITE	equ	$82
-CDBTOCREAD	equ	$83
-CDBPAUSE	equ	$84
-
-FDRSET		equ	$85
-FDRCHG		equ	$86
-
-CDCSTART	equ	$87
-CDCSTARTP	equ	$88
-CDCSTOP		equ	$89
-CDCSTAT		equ	$8A
-CDCREAD		equ	$8B
-CDCTRN		equ	$8C
-CDCACK		equ	$8D
-
-SCDINIT		equ	$8E
-SCDSTART	equ	$8F
-SCDSTOP		equ	$90
-SCDSTAT		equ	$91
-SCDREAD		equ	$92
-SCDPQ		equ	$93
-SCDPQL		equ	$94
-
-LEDSET		equ	$95
-
-CDCSETMODE	equ	$96
-
-WONDERREQ	equ	$97
-WONDERCHK	equ	$98
-
-CBTINIT		equ	$00
-CBTINT		equ	$01
-CBTOPENDISC	equ	$02
-CBTOPENSTAT	equ	$03
-CBTCHKDISC	equ	$04
-CBTCHKSTAT	equ	$05
-CBTIPDISC	equ	$06
-CBTIPSTAT	equ	$07
-CBTSPDISC	equ	$08
-CBTSPSTAT	equ	$09
-
-BRMINIT		equ	$00
-BRMSTAT		equ	$01
-BRMSERCH	equ	$02
-BRMREAD		equ	$03
-BRMWRITE	equ	$04
-BRMDEL		equ	$05
-BRMFORMAT	equ	$06
-BRMDIR		equ	$07
-BRMVERIFY	equ	$08
 
 ; -------------------------------------------------------------------------
 ; BIOS entry points
@@ -281,7 +193,7 @@ _AddressError:	equ	$005F40	; _ADRERR; address error exception
 _BootStatus:	equ	$005EA0	; boot status
 _BackupRAM:		equ	$005F16	; backup RAM function entry
 _CDBIOS:		equ	$005F22	; CD BIOS function entry
-_CDBoot:		equ	$005F1C	; CD boot system
+_CDBoot:		equ	$005F1C	; CD boot function entry
 _CDStatus:		equ	$005E80	; CD status
 _ChkExcp:		equ	$005F52	; _CHKERR; CHK exception		
 _IllegalIns:	equ	$005F46	; _CODERR; illegal instruction exception
@@ -323,3 +235,100 @@ _UserVBlank:	equ	$005F34	; _USERCALL2; user VBlank routine
 _UserCall3:		equ	$005F3A	; user-defined call, not used by BIOS, can be set to point to anything
 _userMode:		equ	$005EA6	; system program return code
 _WaitForVBlank:	equ	$005F10	; _WAITVSYNC
+
+; -------------------------------------------------------------------------
+; BIOS function calls
+; -------------------------------------------------------------------------
+
+; CDDA control commands
+MusicStop:			equ	2	; MSCSTOP; stop playing CDDA audio
+MusicPauseOn:		equ	3	; MSCPAUSEON; pause CDDA audio
+MusicPauseOff:		equ	4	; MSCPAUSEOFF:	resume CDDA audio
+MusicScanForward:	equ	5	; MSCSCANFF: seek CDDA forward
+MusicScanBackward:	equ	6	; MSCSCANFR: seek CDDA backward
+MusicScanOff:		equ	7	; MSCSCANOFF: cancel seek and return to normal playback
+MusicPlay:			equ	$11	; MSCPLAY; play CDDA track. continuing to next track afterward
+MusicPlayOnce:		equ	$12	; MSCPLAY1; play a CDDA track once
+MusicPlayRepeat:	equ	$13	; MSCPLAYR:	play a CCDA track on loop
+MusicPlayAtTime:	equ	$14	; MSCPLAYT;	queue a CDDA track and play it at a designated time
+MusicSeek:			equ	$15	; MSCSEEK; stop CDDA playback upon reaching a specific track
+MusicSeekTime:		equ	$16 ; MSCSEEKT; stop CDDA playback at a specific time
+MusicSeekPlayOnce:	equ	$19	; MSCSEEK1; same as MusicSeek, except play the designated track once
+
+; Drive control commands
+DriveOpen:			equ	$A	; DRVOPEN; if an MCD Model 1 or Pioneer LaserActive (Mega LD), open the disc tray; otherwise wait for user to open drive door
+DriveInit:			equ	$10	; DRVINIT; if an MCD Model 1 or Mega LD, close the disc tray, else wait for user to close door; once closed, check for disc and read TOC
+
+
+; CD-ROM read commands
+ROMPauseOn:			equ	8	; ROMPAUSEON; pause a CD data read
+ROMPauseOff:		equ	9	; ROMPAUSEOFF; resume CD data read
+ROMRead:			equ	$17 ; ROMREAD; begin CD data read from a specific logical sector
+ROMSeek:			equ	$18	; ROMSEEK; stop CD data read at a specific logical sector
+ROMReadNum:			equ	$20 ; ROMREADN; begin CD data read from a specific logical sector and read a specific number of sectors
+ROMReadBetween:		equ	$21	; ROMREADE; perform CD data read between two designated logical sectors
+
+
+
+;TESTENTRY			equ	$1E
+;TESTENTRYLOOP		equ	$1F
+
+
+CDB			equ	$80
+CDBSTAT		equ	$81
+CDBTOCWRITE	equ	$82
+CDBTOCREAD	equ	$83
+CDBPAUSE	equ	$84
+
+FDRSET		equ	$85
+FDRCHG		equ	$86
+
+; Decoder commands
+CDCSTART	equ	$87
+CDCSTARTP	equ	$88
+CDCSTOP		equ	$89
+CDCSTAT		equ	$8A
+CDCREAD		equ	$8B
+CDCTRN		equ	$8C
+CDCACK		equ	$8D
+CDCSETMODE	equ	$96
+
+; Subcode commands
+SCDINIT		equ	$8E
+SCDSTART	equ	$8F
+SCDSTOP		equ	$90
+SCDSTAT		equ	$91
+SCDREAD		equ	$92
+SCDPQ		equ	$93
+SCDPQL		equ	$94
+
+LEDSet:		equ	$95	; LEDSET; set mode of front LEDs; for debugging use only
+
+
+
+WONDERREQ	equ	$97
+WONDERCHK	equ	$98
+
+
+
+CBTINIT		equ	$00
+CBTINT		equ	$01
+CBTOPENDISC	equ	$02
+CBTOPENSTAT	equ	$03
+CBTCHKDISC	equ	$04
+CBTCHKSTAT	equ	$05
+CBTIPDISC	equ	$06
+CBTIPSTAT	equ	$07
+CBTSPDISC	equ	$08
+CBTSPSTAT	equ	$09
+
+BRMINIT		equ	$00
+BRMSTAT		equ	$01
+BRMSERCH	equ	$02
+BRMREAD		equ	$03
+BRMWRITE	equ	$04
+BRMDEL		equ	$05
+BRMFORMAT	equ	$06
+BRMDIR		equ	$07
+BRMVERIFY	equ	$08
+

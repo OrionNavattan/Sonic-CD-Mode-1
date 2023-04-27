@@ -44,7 +44,10 @@ PlayLevelMusic:
 	.past:		
 		move.b	CDDA_Playlist(pc,d0.w),(mcd_maincom_1_lo).l	; get track ID for CDDA music we want to play
 		move.w	#SPCmd_PlayCDDA,d0		; command to play CDDA audio (both looped and unlooped)
-		bra.w	SubCPUCommand
+		bsr.w	SubCPUCommand			; send to sub CPU
+		clr.w	(mcd_maincom_1_lo).l	; clear command used to transfer the music ID
+		rts
+		
 		
 	CDDA_Playlist:
 		; IDS for all CDDA level tracks, or'ed with $80 to enable looping
@@ -153,16 +156,17 @@ SubCmd_PlayCDDA:
 ; called by the sub-cpu code on special stage, title screen, and DA garden
 
 PlayCDDA:
-		bsr.w	ResetCDDAVol	; reset CD volume	
-		move.w	#MSCPLAYR,d0	; loop track
-		tst.b	d1	
-		bmi.s	.play			; branch if we want track to loop
-		move.w	#MSCPLAY1,d0	; only play the track once (speed shoes, invincibility, end-of-level, game over, or sound test)
+		bsr.w	ResetCDDAVol	; reset CD volume
+		move.w	#MSCPLAY1,d0	; play the track once (speed shoes, invincibility, end-of-level, game over, or sound test)
+		tst.b	d1
+		bpl.s	.play			; branch if we want track to play once
+		
+		move.w	#MSCPLAYR,d0	; play track on loop
+		andi.b	$7F,d1			; clear loop bit
 
 	.play:
-		andi.b	$7F,d1			; clear loop bit
 		add.w	d1,d1			; make index
-		movea.l	TrackIDs(pc,d1.w),a0	; a0 = pointer to track name
+		lea	TrackIDs(pc,d1.w),a0	; a0 = pointer to track name
 		jmp	(_CDBIOS).w			; send command to BIOS
 		
 TrackIDs:

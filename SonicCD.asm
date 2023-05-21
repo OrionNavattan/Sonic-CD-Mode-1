@@ -57,7 +57,7 @@ Vectors:
 		dc.l ChkInstr					; CHK exception
 		dc.l TrapvInstr					; TRAPV exception
 		dc.l PrivilegeViol				; Privilege violation
-		dc.l Trace					; TRACE exception
+		dc.l Trace						; TRACE exception
 		dc.l Line1010Emu				; Line-A emulator
 		dc.l Line1111Emu				; Line-F emulator
 		dcb.l 2,ErrorExcept				; Unused (reserved)
@@ -68,11 +68,14 @@ Vectors:
 		dc.l ErrorTrap					; IRQ level 1
 		dc.l ErrorTrap					; IRQ level 2
 		dc.l ErrorTrap					; IRQ level 3
-		dc.l HBlank					; IRQ level 4 (horizontal retrace interrupt)
+		dc.l HBlank						; IRQ level 4 (horizontal interrupt)
 		dc.l ErrorTrap					; IRQ level 5
-		dc.l VBlank					; IRQ level 6 (vertical retrace interrupt)
+		dc.l VBlank						; IRQ level 6 (vertical interrupt)
 		dc.l ErrorTrap					; IRQ level 7
-		dcb.l 16,ErrorTrap				; TRAP #00..#15 exceptions
+		dc.l SubCPUError
+		dc.l DMAQueueOverflow
+		dc.l DMAQueueInvalidCount
+		dcb.l 13,ErrorTrap				; TRAP #00..#15 exceptions
 		dcb.l 16,ErrorTrap			; Unused (reserved)
 
 	
@@ -97,14 +100,19 @@ Header:
 	else
 		dc.b	"GM MK-4407-00   "
     endc
-Checksum:	dc.w $0000			; Checksum
+Checksum:	
+		dc.w $0000			; Checksum
 		dc.b 'JC              ' ; I/O Support : joypad and CD-ROM
-ROMStartLoc:	dc.l Rom_Start			; ROM Start
-ROMEndLoc:	dc.l $FFFFF		
+ROMStartLoc:	
+		dc.l Rom_Start			; ROM Start
+ROMEndLoc:	
+		dc.l $FFFFF		
 					; ROM End
-RAMStartLoc:	dc.l $FF0000		; RAM Start
-RAMEndLoc:	dc.l $FFFFFF		; RAM End
-		dc.b "RA", $A0+(BackupSRAM<<6)+(AddressSRAM<<3), $20
+RAMStartLoc:	
+		dc.l $FF0000		; RAM Start
+RAMEndLoc:	
+		dc.l $FFFFFF		; RAM End
+		dc.b "RA", $A0+(BackupSRAM<<6)+(AddressSRAM<<3),$20
 		dc.l $200000					; SRAM start
 		dc.l $200FFF					; SRAM end
 		dc.b '                                                          ' ; Notes
@@ -125,7 +133,7 @@ EndOfHeader:
 		jsr	InitSubCPU
 		bne.s	.skip				; If it failed, branch
 
-		move	#$2000,sr			; Enable interrupts
+		enable_ints			; enable interrupts
 		; Wait for the Sub CPU to initialize here
 
 	.notfound:
@@ -135,7 +143,6 @@ EndOfHeader:
 		bsr.w	SendMCDInt2			; Send MCD INT2 request
 		...
 		
-		bsr.w	SoundDriverLoad
 		
 		include "includes/main/Mega CD Mode 1.asm"
 
@@ -154,17 +161,17 @@ GameModeArray:
 
 		gmptr	Sega			; 0
 		gmptr	Title			; 4
-		gmptr	Demo, Level		; 8
+		gmptr	Demo,Level		; 8
 		gmptr	Level			; $C
-		gmptr 	TimeWarp
-		gmptr	SpecialStage
-		gmptr	BURAM_SRAMManager	
-		gmptr	DAGarden
-		gmptr	FMV		
-		gmptr 	SoundTest
-		gmptr	EasterEgg		
-		gmptr 	StageSelect
-		gmptr	BestStaffTimes
+		gmptr 	TimeWarp		; $10
+		gmptr	SpecialStage	; $14
+		gmptr	BURAM_SRAMManager	; $18
+		gmptr	DAGarden		; $1C
+		gmptr	FMV				; $20
+		gmptr 	SoundTest		; $24
+		gmptr	EasterEgg		; $28
+		gmptr 	StageSelect		; $2C
+		gmptr	BestStaffTimes	; $30
 				
 		
 		

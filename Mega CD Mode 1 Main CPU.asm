@@ -52,8 +52,8 @@ mcd_mem_mode:		equ	$A12003 ; word RAM swap and program RAM bankswitch registers;
 	bank_assignment_bit:	equ 0	; RET; read-only; word RAM bank assignment; 0 = bank 0 main CPU and bank 1 sub CPU, 1 - bank 0 sub CPU and bank 1 main CPU
 	bank_swap_request_bit:	equ 1	; DMNA; swap word ram banks by setting to 1; returns 1 while swap is in progress and 0 once it is complete
 	; 2M mode:	
-	wordram_swaptomain_bit:	equ 0	; RET; read-only, 0 = swap of word RAM to main CPU is in progress; 1 = swap complete
-	wordram_swaptosub_bit:	equ 1	; DMNA; give word RAM to sub CPU by setting to 1; returns 0 while swap is in progress and 1 once it is complete
+	wordram_swapmain_bit:	equ 0	; RET; read-only, 0 = swap of word RAM to main CPU is in progress; 1 = swap complete
+	wordram_swapsub_bit:	equ 1	; DMNA; give word RAM to sub CPU by setting to 1; returns 0 while swap is in progress and 1 once it is complete
 
 	wordram_mode_bit:		equ 2	; MODE; read only, 0 = 2M mode, 1 = 1M mode
 	program_ram_bank_1:		equ 6	; program RAM bank bits, sets program RAM bank to access
@@ -62,8 +62,8 @@ mcd_mem_mode:		equ	$A12003 ; word RAM swap and program RAM bankswitch registers;
 	
 mcd_cd_controller_mode:		equ	$A12004 ; CD data controller mode and destination select register
 	cd_destination:		equ 7	; bits 0-2, destination of CD data read
-	cd_dest_main:		equ	2	; main CPU read from mcd_cdc_host
-	cd_dest_sub:		equ 3	; sub CPU read from mcd_cdc_host
+	cd_dest_main:		equ	2	; main CPU read from mcd_cdc_data
+	cd_dest_sub:		equ 3	; sub CPU read from mcd_cdc_data
 	cd_dest_pcm:		equ 4	; DMA to PCM sound source
 	cd_dest_prgram:		equ 5	; DMA to program RAM
 	cd_dest_wordram:	equ 7	; DMA to word RAM
@@ -74,7 +74,7 @@ mcd_cd_controller_mode:		equ	$A12004 ; CD data controller mode and destination s
 
 
 mcd_user_hblank:	equ	$A12006 ; override default HBlank vector (useless in Mode 1), new address consists of $FF0000 or'ed with contents of this register
-mcd_cdc_host:		equ	$A12008 ; CD data output for main CPU read
+mcd_cdc_data:		equ	$A12008 ; CD data output for main CPU read
 mcd_stopwatch:		equ	$A1200C ; general purpose 12-bit timer
 
 mcd_com_flags:		equ	$A1200E ; Communication flags

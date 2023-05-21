@@ -96,12 +96,11 @@ Get_PCM:
 	.waitsubCPU1:	
 		move.w	(mcd_subcom_0).l,d0		; has the Sub CPU received and processed the command?
 		beq.s	.waitsubCPU1			; if not, wait
-		btst	#7,(mcd_sub_flag).l	; do we need to load new samples?
-		beq.s	.no_load			; branch if not
+		tst.b	(mcd_sub_flag).l	; do we need to load new samples?
+		bpl.s	.no_load			; branch if not
 		
 		lea	(word_ram_2M).l,a1			; decompress to word RAM (we will already have access)
 		movea.l	PCM_Pointers(pc,d1.w),a2	; get bank list (PCM track ID is also index to the sample bank)
-		move.w	(a2)+,(a1)+			; loop counter for sub CPU when copying decompressed samples
 		move.w	(a2)+,d0			; loop counter for number of samples to decompress
 		
 	.loop:
@@ -109,12 +108,15 @@ Get_PCM:
 		bsr.w	KosDec				; decompress the sample into word ram
 		dbf	d0,.loop				; repeat for all samples
 		
+		move.l	a1,(mcd_maincom_2).l	; send end address to sub CPU so it can calculate the copy loop counter
+		
 		bsr.w	GiveWordRAMAccess	; give the word ram to the sub CPU
 	
 	.waitsubCPU2:
 		move.w	(mcd_subcom_0).l,d0	; has the sub CPU finished copying the decompressed samples?
 		beq.s	.waitsubCPU2			; if not, wait
 		
+		clr.w	(mcd_maincom_2).l
 	.no_load:
 		clr.w	(mcd_maincom_1).l	; clear command used to transfer the music ID
 		clr.w	(mcd_maincom_0).l	; mark as ready to send commands again
@@ -125,9 +127,9 @@ Get_PCM:
 		rts
 	
 PCM_Pointers:
-		; Pointers to the PCM bank lists. Each list consists of a loop counter for the 
-		; sub CPU (generated via macro). the number of samples to copy - 1, 
-		; and longword pointers to the Kosinski-compressed PCM samples required for each track.
+		; Pointers to the PCM module lists. Each list consists of a pointer to the 
+		; Kosinski-compressed bytecode and sample metadata bundle and pointers to 
+		; the Kosinski-compressed PCM samples required for each track, all longwords.
 
 		dc.l	PCMList_PPZ
 		dc.l	PCMList_CCZ
@@ -176,7 +178,7 @@ TrackIDs:
 
 ;=========================================================================================
 
-v_pcm_bank:	; id of currently loaded PCM music track (also used as index to their bytecode and metadata, and for getting their sample bank)
+v_current_musmodule:	; id of currently loaded PCM music module
 
 ; Play a PCM track
 ; input = track ID in mcd_com_cmd_1
@@ -184,12 +186,13 @@ v_pcm_bank:	; id of currently loaded PCM music track (also used as index to thei
 SubCmd_PlayPCMMusic:
 		moveq	#0,d1
 		move.b	(mcd_maincom_1),d1	; get PCM track ID
-		cmp.b	d1,(v_pcm_bank).l	; is the data for this track already loaded?
+		cmp.b	d1,(v_current_musmodule).l	; is the data for this track already loaded?
 		beq.s	.noload				; if so, branch
 		
-		move.b d1,(v_pcm_bank).l	; set current PCM bank 
+		move.b d1,(v_current_musmodule).l	; set new music module 
 		jsr	(ResetDriver).l		; reset the driver (stopping any sounds that are already playing)
-		jsr	(ClearSampleRAM).l	; clear the sample RAM
+		jsr (ClearSamples).l	; clear waveram
+		jsr	(ClearModule).l		; clear the music module ram
 		bset	#7,(mcd_sub_flag).w	; let the main CPU know we need a new sample bank			
 	
 		move.w	(mcd_maincom_0).w,(mcd_subcom_0).w	; tell the main CPU we got the memo
@@ -197,8 +200,9 @@ SubCmd_PlayPCMMusic:
 		bsr.w	WaitWordRAMAccess			; wait while main CPU loads the samples
 	
 		lea	(word_ram_2M).l,a0	; source of decompressed data
-		lea	(Music_Samples).l,a1	; area of PRGRAM reserved for music samples
-		move.w	(a0)+,d3		; set loop counter
+		lea	(MusicModule).l,a1	; area of PRGRAM reserved for music samples
+		move.w	(mcd_maincom_2).w,d3		; set loop counter
+		; TODO; calculate loop counter
 		
 	.loop:	
 		move.l	(a0)+,(a1)+	; copy the samples to the destination

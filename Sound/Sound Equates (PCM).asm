@@ -14,10 +14,11 @@ pcm_st:			equ	$FF000D	; wave memory start address
 pcm_ctrl:		equ	$FF000F	; PCM control register
 	channel_select:	equ 7		; bits 0-2; when mod bit is set, selects PCM channel that settings in the above 7 registers are applied to
 	waveram_bank:	equ $F		; bits 0-3; when mod bit is clear, selects the wave ram bank that is accessed via the wave RAM window
+
 	waveram_buffer_bit:	equ 3	; when clear, accessing channels 1-4, when set, accessing channels 5-8
-	
 	mod_bit:		equ 6	; controls the function of bits 0-3, see above for explanation
 	pcm_onoff_bit:	equ 7	; enable or disable all channels (be warned, waveram writes may not work correctly if sounding is disabled with this )
+	pcm_on:			equ 1<<pcm_onoff_bit
 pcm_channel_onoff:	equ	$FF0011	; mute a single channel by setting the bit of this register corresponding to its ID
 	
 
@@ -45,6 +46,9 @@ pcm_addr_8H:	equ	$FF003F	; PCM 8 address (high byte)
 pcm_waveram:	equ	$FF2001	; $1000 byte wave RAM window (only odd bytes are accessible!)
 pcm_waveram_end:	equ $FF3FFF	; wave ram window end
 
+sizeof_waveramblock:	equ $200	; size of blocks within waveram banks
+sizeof_waverambank:			equ $200*$10	; $2000
+
 
 ; PCM channel IDs
 pcm_ch_1:		equ 0
@@ -64,8 +68,8 @@ countof_pcmtracks:		equ	8			; number of PCM tracks
 ; -------------------------------------------------------------------------
 
 	rsreset
-f_current_tempo:	rs.b 1			; tempo value
-f_tempo_counter:	rs.b 1			; tempo counter
+v_current_tempo:	rs.b 1			; tempo value
+v_tempo_counter:	rs.b 1			; tempo counter
 v_enabled_channels:	rs.b 1			; channels on/off array
 v_priority:			rs.b 1			; saved SFX priority level
 v_timing:			rs.b 1			; communication flag
@@ -129,8 +133,8 @@ ch_volume:		rs.b 1			; 9; volume
 ch_stackptr:	rs.b 1			; $A; call stack pointer
 ch_delay:		rs.b 1			; $B; duration counter
 ch_saved_delay:	rs.b 1			; $C; duration value
-ch_stac_cnt:	rs.b 1			; $D; staccato counter
-ch_stac:		rs.b 1			; $E; staccato value
+ch_gate:	rs.b 1			; $D; staccato counter
+ch_savedgate:		rs.b 1			; $E; staccato value
 ch_detune:		rs.b 1			; $F; detune
 ch_freq:		rs.w 1			; $10; frequency
 ch_samplbnk:	rs.b 1			; $12; sample RAM bank ID

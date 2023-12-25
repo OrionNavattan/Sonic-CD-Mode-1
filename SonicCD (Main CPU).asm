@@ -1,8 +1,9 @@
 ;  =========================================================================
 ; |					       Sonic the Hedgehog CD Mode 1						|
+; |								Main CPU Program							|
 ;  =========================================================================
 
-; Based on the partial disassembly of the Mode 2 original by Devon.
+; 	Based on the partial disassembly of the Mode 2 original by Devon.
 
 ;  =========================================================================
 
@@ -13,24 +14,24 @@
 		opt	an+					; allow use of -h for hexadecimal (used in Z80 code)
 		opt	w+					; print warnings
 		opt	m+					; do not expand macros - if enabled, this can break assembling
-		
+
 Main:	group word,org(0) ; we have to use the long form of group declaration to avoid triggering an overlay warning during assembly
 		section MainProgram,Main
-		
+
 FixBugs = 0		; Leave at 0 to preserve a handful of bugs and oddities in the original game.
 				; Set to 1 to fix them.
-				
+
 				; Region setting is done in the build script.
 
 
 		include "Macros - More CPUs.asm"	; Z80 support macros
 		cpu 68000
-		
-			
-		include "Mega Drive.asm" 					; standard Mega Drive hardware addresses and function macros
-		include "Mega CD Mode 1 Main CPU.asm"		; Mega CD Mode 1 main CPU hardware addresses and function macros
+
+
+		include "Mega CD Main CPU (Mode 1).asm"		; Mega CD Mode 1 main CPU hardware addresses and function macros
+		include "Debugger Macros and Common Defs.asm"	; error handler definitions common to both CPUs
 		include "Common Macros.asm"					; macros common to both main and sub CPU programs
-		include "Main CPU Macros.asm"	
+		include "Macros (Main CPU).asm"
 		include "SpritePiece.asm"					; Sprite mapping macros
 		include "File List.asm"
 		include "Main CPU Constants.asm"
@@ -42,12 +43,13 @@ FixBugs = 0		; Leave at 0 to preserve a handful of bugs and oddities in the orig
 		include "sound/Sound Language.asm" ; SMPS2ASM macros and conversion functionality
 		include "sound/FM and PSG Sounds.asm"
 		include "sound/PCM Sounds.asm"
-		
+
 ROM_Start:
-   if * <> 0
-	inform 3,"ROM_Start was $%h but it should be 0.",ROM_Start 
-   endc
-Vectors:						
+	if * <> 0
+		inform 3,"ROM_Start was $%h but it should be 0.",ROM_Start
+	endc
+
+Vectors:
 		dc.l v_stack_pointer	; Initial stack pointer value
 		dc.l EntryPoint					; Start of program
 		dc.l BusError					; Bus error
@@ -78,21 +80,21 @@ Vectors:
 		dcb.l 13,ErrorTrap				; TRAP #00..#15 exceptions
 		dcb.l 16,ErrorTrap			; Unused (reserved)
 
-	
-Header:		
+
+Header:
 	if region=japan
-		dc.b	"SEGA MEGA DRIVE "	; Hardware ID
+		dc.b	"SEGA DISC SYSTEM"	; Hardware ID
 		dc.b	"(C)SEGA 1993.AUG"	; Release date
 	elseif region=usa
-		dc.b	"SEGA GENESIS    "	; Hardware ID
+		dc.b	"SEGA DISC SYSTEM"	; Hardware ID
 		dc.b	"(C)SEGA 1993.OCT"	; Release date
 	else
-		dc.b	"SEGA MEGA DRIVE "	; Hardware ID
+		dc.b	"SEGA DISC SYSTEM"	; Hardware ID
 		dc.b	"(C)SEGA 1993.AUG"	; Release date
-	endif	
+	endif
 		dc.b 'SONIC THE HEDGEHOG-CD                           ' ; Domestic name
 		dc.b 'SONIC THE HEDGEHOG-CD                           ' ; International name
-	
+
 	if region=japan				; Game version
 		dc.b	"GM G-6021  -00  "
 	elseif region=usa
@@ -100,17 +102,17 @@ Header:
 	else
 		dc.b	"GM MK-4407-00   "
     endc
-Checksum:	
+Checksum:
 		dc.w $0000			; Checksum
 		dc.b 'JC              ' ; I/O Support : joypad and CD-ROM
-ROMStartLoc:	
+ROMStartLoc:
 		dc.l Rom_Start			; ROM Start
-ROMEndLoc:	
-		dc.l $FFFFF		
+ROMEndLoc:
+		dc.l $FFFFF
 					; ROM End
-RAMStartLoc:	
+RAMStartLoc:
 		dc.l $FF0000		; RAM Start
-RAMEndLoc:	
+RAMEndLoc:
 		dc.l $FFFFFF		; RAM End
 		dc.b "RA", $A0+(BackupSRAM<<6)+(AddressSRAM<<3),$20
 		dc.l $200000					; SRAM start
@@ -118,34 +120,29 @@ RAMEndLoc:
 		dc.b '                                                          ' ; Notes
 		dc.b '      '
 		dc.b 'JUE             ' ; Country
-EndOfHeader:		
-; ============================================		
-		
-		include "includes/main/Mega Drive Setup.asm" ; EntryPoint
+EndOfHeader:
+; ===========================================================================
 
-		
-		bsr.w	FindMCDBIOS			; Find the MCD's BIOS
-		bcs.s	.notfound				; If it wasn't found, branch
-							; a0 = Address of Sub CPU BIOS
+		include "includes/main/Mega CD Initialization.asm"	; EntryPoint
 
-		lea	SubProgram(pc),a1		; Initialize Sub CPU
-		move.l	#SubProgramSize,d0
-		jsr	InitSubCPU
-		bne.s	.skip				; If it failed, branch
+WaitSubInit:
+		cmpi.b	#$FF,(mcd_sub_flag).l	; is sub CPU OK?
+		bne.s	.subOK				; branch if so
+		trap #0
 
-		enable_ints			; enable interrupts
-		; Wait for the Sub CPU to initialize here
+	.subOK:
+		cmpi.b	#'R',(mcd_subcom_0).l	; is sub CPU done initializing?
+		bne.s	WaitSubInit				; branch if not
 
-	.notfound:
-		; jump to routine to display error message
+MainLoop:		; At this point, both CPUs are ready. Continue with your main program from here.
+		move.w	#cGreen,(vdp_data_port).l	; signal success
+		bra.s *								; stay here forever
 
-	VInterrupt:
-		bsr.w	SendMCDInt2			; Send MCD INT2 request
-		...
-		
-		
-		include "includes/main/Mega CD Mode 1.asm"
+; ===========================================================================
 
+		include "KosM to PrgRAM.asm"
+		include "Kosinski Decompression.asm"
+; ===========================================================================
 
 gmptr:		macro
 		id_\1:	equ offset(*)-GameModeArray
@@ -156,7 +153,7 @@ gmptr:		macro
 		endc
 		endm
 
-		
+
 GameModeArray:
 
 		gmptr	Sega			; 0
@@ -172,12 +169,22 @@ GameModeArray:
 		gmptr	EasterEgg		; $28
 		gmptr 	StageSelect		; $2C
 		gmptr	BestStaffTimes	; $30
-				
-		
-		
-		
-		
-		
-		
-		
-		
+; ===========================================================================
+
+		include "includes/main/VBlank.asm"
+; ===========================================================================
+
+SubCPU_Program:
+		incbin "Sub CPU Program.kosm"
+		even
+; ===========================================================================
+
+		include "includes/main/Mega CD Exception Handler (Main CPU).asm"
+
+ROM_End:
+		end
+
+
+
+
+

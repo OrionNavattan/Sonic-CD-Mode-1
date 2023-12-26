@@ -1,5 +1,8 @@
 
 
+
+sizeof_sector:		equ $800
+
 ; File engine statuses
 fstatus_ok:			equ	100			; OK
 fstatus_getfail:	equ	-1			; File get failed
@@ -15,7 +18,7 @@ fmvdata_gfx:	equ	1			; Graphics data type
 ; FMV flags
 fmvflag_init:	equ	3			; Initialized flag
 fmvflag_pbuf:	equ	4			; PCM buffer ID
-fmvflag_readyL	equ	5			; Ready flag
+fmvflag_ready:	equ	5			; Ready flag
 fmvflag_sect:	equ	7			; Reading data section 1 flag
 
 ; File data

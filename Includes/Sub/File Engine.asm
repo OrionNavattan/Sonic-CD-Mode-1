@@ -8,6 +8,7 @@
 
 LoadFile:
 		moveq	#id_FileFunc_LoadFile,d0		; start file loading
+	;	jsr	(FileFunction).l
 		bsr.s	FileFunction_NonInt
 
 	.waitload:
@@ -18,11 +19,11 @@ LoadFile:
 		bcs.s	.waitload				; if not, wait
 
 		cmpi.w	#fstatus_ok,d0			; was the operation a success?
-		bne.w	LoadFile			; i not, try again
+		bne.w	LoadFile		; i not, try again
 		rts
 
 ; -------------------------------------------------------------------------
-; get file name
+; Get file name
 
 ; input:
 ;	d0.w - file ID
@@ -31,8 +32,9 @@ LoadFile:
 ;	a0.l - pointer to file name
 ; -------------------------------------------------------------------------
 
-GetFileName:
+Get_Name:
 		mulu.w	#sizeof_filename+1,d0		; get file name pointer
+	;	lea	(FileTable).l,a0
 		lea	FileTable(pc),a0
 		adda.w	d0,a0
 		rts
@@ -50,11 +52,19 @@ FileFunction_NonInt:	; if we're calling this outside of VBlank, we want return v
 		popr.l	a0-a6
 		rts
 
-FileFunction:				; assumes registers have already been backed up
+FileFunction:				; assumes registers have already been backed up before call
 		lea	FileVars(pc),a5			; perform function
 		add.w	d0,d0
 		move.w	FileFunction_Index(pc,d0.w),d0
 		jmp	FileFunction_Index(pc,d0.w)
+
+	;	pushr.l	a0-a6				; save registers
+	;	lea	(FileVars).l,a5			; perform function
+	;	add.w	d0,d0
+	;	move.w	FileFunction_Index(pc,d0.w),d0
+	;	jsr	FileFunction_Index(pc,d0.w)
+	;	popr.l	a0-a6			; pestore registers
+	;	rts
 
 ; -------------------------------------------------------------------------
 
@@ -76,14 +86,26 @@ FileFunction_Index:	index *
 FileFunc_GetFiles:
 		move.w	#id_FileMode_GetFiles,fe_opermode(a5)	; set operation mode to "get files"
 		move.b	#1<<fmvflag_sect,fe_fmv(a5)		; mark as reading data section 1
+	;	move.l	f#0,e_fmvfailcount(a5)		; reset fail counter
 		clr.l	fe_fmvfailcount(a5)		; reset fail counter
 		rts
 
 ; -------------------------------------------------------------------------
-; initialize file engine
+; Initialize file engine
 ; -------------------------------------------------------------------------
 
 FileFunc_EngineInit:
+	;	lea FileVars(pc),a1
+	;	move.w	#sizeof_FileVars/4-1,d1
+	;	moveq	#0,d0
+
+	;.loop:
+	;	move.l	d1,(a1)+	; clear 1 byte of variables
+	;	dbf	d0,.loop	; repeat for all file variables
+
+		clear_ram.pc	FileVars,sizeof_FileVars
+
+FileFunc_EngineReset:
 		move.l	#FileOperation,fe_operbookmark(a5)	; reset operation bookmark
 		move.w	#id_FileMode_None,fe_opermode(a5)	; set operation mode to "none"
 		rts
@@ -102,14 +124,15 @@ FileFunc_Operation:
 
 FileOperation:
 FileMode_None:
+	;	bsr.w	FileMode_SetOperMark		; set bookmark
 		bsr.s	FileMode_SetOperMark		; set bookmark
 
 		move.w	fe_opermode(a5),d0		; perform operation
 		add.w	d0,d0
 		move.w	FileOperation_Index(pc,d0.w),d0
 		jmp	FileOperation_Index(pc,d0.w)
+; ===========================================================================
 
-; -------------------------------------------------------------------------
 
 FileOperation_Index:	index *
 		ptr	FileMode_None		; none
@@ -119,11 +142,11 @@ FileOperation_Index:	index *
 		ptr	FileMode_LoadMuteFMV	; load mute FMV
 
 ; -------------------------------------------------------------------------
-; set operation bookmark
+; Set operation bookmark
 ; -------------------------------------------------------------------------
 
 FileMode_SetOperMark:
-		popr.l	fe_operbookmark(a5)
+		popr.l	fe_operbookmark(a5)		; set bookmark
 		rts
 
 ; -------------------------------------------------------------------------
@@ -131,261 +154,266 @@ FileMode_SetOperMark:
 ; -------------------------------------------------------------------------
 
 FileMode_GetFiles:
-		move.b	#cdd_dest_sub,fe_cdcmode(a5)			; set CDC device to sub CPU
-		move.l	#$10,fe_sector(a5)		; read from sector $10 (primary volume descriptor)
+		move.b	#cdc_dest_sub,fe_cdcmode(a5)			; set CDC device to sub CPU
+		move.l	#iso9660_pvd_sector,fe_sector(a5)		; read sector $10 (primary volume descriptor)
 		move.l	#1,fe_sectorcount(a5)		; read 1 sector
-		lea	fe_dirreadbuf(a5),a0		; get read buffer
-		move.l	a0,fe_readbuffer(a5)
-		;move.l	#FileVars+fe_dirreadbuf,fe_readbuffer(a5)
+	;	lea	fe_dirreadbuf(a5),a0		; get read buffer
+	;	move.l	a0,fe_readbuffer(a5)
+		move.l	#FileVars+fe_dirreadbuf,fe_readbuffer(a5)
 		bsr.w	ReadSectors			; read volume descriptor sector
 		cmpi.w	#fstatus_readfail,fe_status(a5)	; was the operation a failure?
-		beq.w	.Failed				; if so, branch
+		beq.w	.failed				; if so, branch
 
 		lea	fe_dirreadbuf(a5),a1		; primary volume descriptor buffer
-		move.l	$A2(a1),fe_sector(a5)		; get root directory sector
-		move.l	$AA(a1),d0			; get root directory size
+		move.l	iso9660_pvd_rootdir+directory_start+4(a1),fe_sector(a5)		; get root directory start sector (which we'll read next)
+		move.l	iso9660_pvd_rootdir+directory_size+4(a1),d0			; get root directory size in bytes
 		divu.w	#sizeof_sector,d0			; get size in sectors
 		swap	d0
 		tst.w	d0				; is the size sector aligned?
-		beq.s	.Aligned			; if so, branch
+		beq.s	.aligned			; if so, branch
 		addi.l	#1<<16,d0			; align sector count
 
-	.Aligned:
+	.aligned:
 		swap	d0				; set sector count
 		move.w	d0,fe_dirsectors(a5)
 		clr.w	fe_filecount(a5)			; reset file count
 
-.GetDirectory:
+.get_directory:
 		move.l	#1,fe_sectorcount(a5)		; read 1 sector
-		lea	fe_dirreadbuf(a5),a1		; get read buffer
-		move.l	a1,fe_readbuffer(a5)
+	;	lea	fe_dirreadbuf(a5),a1		; get read buffer
+	;	move.l	a1,fe_readbuffer(a5)
+		move.l	#FileVars+fe_dirreadbuf,fe_readbuffer(a5)
 		bsr.w	ReadSectors			; read sector of root directory
-		cmpi.w	#FSTAT_READFAIL,fe_status(a5)	; Was the operation a failure?
-		beq.w	.Failed				; if so, branch
+		cmpi.w	#fstatus_readfail,fe_status(a5)	; was the operation a failure?
+		beq.w	.failed				; if so, branch
 
 		lea	fe_filelist(a5),a0		; go to file list cursor
-		move.w	fe_filecount(a5),d0
-		mulu.w	#FILEENTRYSZ,d0
-		adda.l	d0,a0
+		move.w	fe_filecount(a5),d0		; d0 = current file count
+		mulu.w	#sizeof_fileentry,d0
+		adda.l	d0,a0				; jump to entry for file we're about to load info for
 
-		lea	fe_dirreadbuf(a5),a1		; Prepare to get file info
+		lea	fe_dirreadbuf(a5),a1		; prepare to get file info
 		moveq	#0,d0
 
-.GetFileInfo:
-		move.b	0(a1),d0			; get file entry size
-		beq.s	.NoMoreFiles			; if there are no more files left, branch
-		move.b	$19(a1),fileFlags(a0)		; get file flags
+.get_file:
+		move.b	directory_length(a1),d0			; get file entry size
+		beq.s	.no_more_files			; branch if zero (no more files left)
+		move.b	directory_flags(a1),file_flags(a0)		; get file flags
 
-		moveq	#0,d1				; Prepare to get location and size
+		moveq	#0,d1				; prepare to get location and size
+	.get_file_sector_size:
+		move.b	directory_start+4(a1,d1.w),file_sector(a0,d1.w)	; get one byte of file sector
+		move.b	directory_size+4(a1,d1.w),file_length(a0,d1.w)	; get one byte of file size
+		addq.w	#1,d1				; next byte
+		cmpi.w	#4,d1				; have we done all four bytes of sector and size?
+		blt.s	.get_file_sector_size			; if not, branch
 
-.GetFileLocSize:
-		move.b	6(a1,d1.w),fileSector(a0,d1.w)	; get file sector
-		move.b	$E(a1,d1.w),fileLength(a0,d1.w)	; get file size
+		moveq	#0,d1				; prepare to get file name
+	.get_name:
+		move.b	directory_name(a1,d1.w),(a0,d1.w)		; get one byte of file name
 		addq.w	#1,d1
-		cmpi.w	#4,d1				; Are we done?
-		blt.s	.GetFileLocSize			; if not, branch
+		cmp.b	directory_name_length(a1),d1			; have we copied the full name?
+		blt.s	.get_name			; if not, branch
 
-		moveq	#0,d1				; Prepare to get file name
-
-.GetFileName:
-		move.b	$21(a1,d1.w),(a0,d1.w)		; get file name
-		addq.w	#1,d1
-		cmp.b	$20(a1),d1			; Are we done?
-		blt.s	.GetFileName			; if not, branch
-
-.PadFileName:
-		cmpi.b	#FILENAMESZ,d1			; Are we at the end of the file name?
-		bge.s	.NextFile			; if so, branch
+	.pad_name:
+		cmpi.b	#sizeof_filename,d1			; did we reach the maximum length for the file name?
+		bge.s	.next_file			; if so, branch
 		move.b	#' ',(a0,d1.w)			; if not, pad out with spaces
 		addq.w	#1,d1
-		bra.s	.PadFileName			; Loop until done
+		bra.s	.pad_name			; loop until done
 
-.NextFile:
-		addq.w	#1,fe_filecount(a5)		; increment fle count
-		adda.l	d0,a1				; Prepare next file
-		adda.l	#FILEENTRYSZ,a0
-		bra.s	.GetFileInfo
+	.next_file:
+		addq.w	#1,fe_filecount(a5)		; increment file count
+		adda.l	d0,a1					; next file in directory sector
+		adda.l	#sizeof_fileentry,a0	; next file entry in file table
+		bra.s	.get_file
 
-.NoMoreFiles:
-		subq.w	#1,fe_dirsectors(a5)		; Decrement directory sector count
-		bne.w	.GetDirectory			; if there are sectors left, branch
+	.no_more_files:
+		subq.w	#1,fe_dirsectors(a5)		; decrement directory sector count
+		bne.w	.get_directory			; branch if there are more left to do
 
-		move.w	#fstatus_ok,fe_status(a5)		; Mark operation as successful
+		move.w	#fstatus_ok,fe_status(a5)		; mark operation as successful
 
-	.Done:
-		move.w	#FMODE_NONE,fe_opermode(a5)	; set operation mode to "none"
-		bra.w	FileOperation			; Loop back
+.done:
+		move.w	#id_FileMode_None,fe_opermode(a5)	; set operation mode to "none"
+		bra.w	FileOperation				; loop back
+; ===========================================================================
 
-	.Failed:
-		move.w	#fstatus_getfail,fe_status(a5)	; Mark operation as successful
-		bra.s	.Done
+.failed:
+		move.w	#fstatus_getfail,fe_status(a5)	; mark operation as failed
+		bra.s	.done
 
 ; -------------------------------------------------------------------------
 ; "Load file" operation
 ; -------------------------------------------------------------------------
 
 FileMode_LoadFile:
-		move.b	#3,fe_cdcmode(a5)			; set CDC device to "Sub CPU"
-		lea	fe_filename(a5),a0		; Find file
-		bsr.w	FileFunc_FindFile
-		bcs.w	.FileNotFound			; if it wasn't found, branch
+		move.b	#cdc_dest_sub,fe_cdcmode(a5)			; set CDC device to "Sub CPU"
+		lea	fe_filename(a5),a0
+		bsr.w	FileFunc_FindFile			; find file
+		bcs.w	.not_found			; branch if not found
 
-		move.l	fileSector(a0),fe_sector(a5)	; get file sector
-		move.l	fileLength(a0),d1		; get file size
+		move.l	file_sector(a0),fe_sector(a5)	; get file sector
+		move.l	file_length(a0),d1		; get file size
 		move.l	d1,fe_filesize(a5)
 
-		move.l	#1,fe_sectorcount(a5)		; get file size in sectors
+		move.l	#1,fe_sectorcount(a5)	; 1 sector minimum
 
-.GetSectors:
-		subi.l	#$800,d1
-		ble.s	.ReadFile
-		addq.l	#1,fe_sectorcount(a5)
-		bra.s	.GetSectors
+	.get_sectors:
+		subi.l	#sizeof_sector,d1	; subtract size of sector
+		ble.s	.read				; branch if we underflowed to negative or reached zero
+		addq.l	#1,fe_sectorcount(a5)	; increment sector count
+		bra.s	.get_sectors
 
-.ReadFile:
-		bsr.w	ReadSectors			; read file
-		cmp.w	#FSTAT_OK,fe_status(a5)		; Was the operation a success?
-		beq.s	.Done				; if so, branch
-		move.w	#FSTAT_LOADFAIL,fe_status(a5)	; Mark as failed
+	.read:
+		bsr.w	ReadSectors			; read file from disc
+		cmp.w	#fstatus_ok,fe_status(a5)		; was the operation a success?
+		beq.s	.done				; if so, branch
+		move.w	#fstatus_loadfail,fe_status(a5)	; mark as failed
 
-.Done:
-		move.w	#FMODE_NONE,fe_opermode(a5)	; set operation mode to "none"
-		bra.w	FileOperation			; Loop back
+.done:
+		move.w	#id_FileMode_None,fe_opermode(a5)	; set operation mode to "none"
+		bra.w	FileOperation			; loop back
+; ===========================================================================
 
-.FileNotFound:
-		move.w	#FSTAT_NOTFOUND,fe_status(a5)	; Mark as not found
-		bra.s	.Done
+	.not_found:
+		move.w	#fstatus_notfound,fe_status(a5)	; mark as not found
+		bra.s	.done
 
 ; -------------------------------------------------------------------------
-; get file engine status
-; -------------------------------------------------------------------------
-; rETURNS:
-;	d0.w  - Return code
-;	d1.l  - File size if file load was successful
+; Get file engine status
+
+; output:
+;	d0.w  - return code
+;	d1.l  - file size if file load was successful
 ;	        Sectors read if file load failed
-;	cc/cs - Inactive/Busy
+;	cc/cs - inactive/busy
 ; -------------------------------------------------------------------------
 
 FileFunc_GetStatus:
-		cmpi.w	#FMODE_NONE,fe_opermode(a5)	; is there an operation going on?
-		bne.s	.Busy				; if so, branch
+		cmpi.w	#id_FileMode_None,fe_opermode(a5)	; is there an operation going on?
+		bne.s	.busy				; if so, branch
 
 		move.w	fe_status(a5),d0			; get status
-		cmpi.w	#FSTAT_OK,d0			; is the status marked as successful?
-		bne.s	.Failed				; if not, branch
+		cmpi.w	#fstatus_ok,d0			; is the status marked as successful?
+		bne.s	.failed				; if not, branch
 		move.l	fe_filesize(a5),d1		; return file size
-		bra.s	.Inactive
+		bra.s	.inactive
 
-.Failed:
-		cmpi.w	#FSTAT_LOADFAIL,d0		; is the status marked as a failed load?
-		bne.s	.Inactive			; if not, branch
+	.failed:
+		cmpi.w	#fstatus_loadfail,d0		; is the status marked as a failed load?
+		bne.s	.inactive			; if not, branch
 		move.w	fe_sectorsread(a5),d1		; return sectors read
 
-.Inactive:
-		move	#0,ccr				; Mark as inactive
+	.inactive:
+		move	#0,ccr				; mark as inactive
 		rts
+; ===========================================================================
 
-.Busy:
-		move	#1,ccr				; Mark as busy
+	.busy:
+		move	#1,ccr				; mark as busy (sets carry bit of CCR)
 		rts
 
 ; -------------------------------------------------------------------------
-; Load a file
-; -------------------------------------------------------------------------
-; PARAMETERS:
-;	a0.l - File name
-;	a1.l - File read destination buffer
+; Initiate loading a file
+
+; input:
+;	a0.l - file name
+;	a1.l - file destination
 ; -------------------------------------------------------------------------
 
 FileFunc_LoadFile:
-		move.w	#FMODE_LOADFILE,fe_opermode(a5)	; set operation mode to "load file"
+		move.w	#id_FileMode_LoadFile,fe_opermode(a5)	; set operation mode to "load file"
 		move.l	a1,fe_readbuffer(a5)		; set read buffer
 
-		movea.l	a0,a1				; Copy file name
+		movea.l	a0,a1				; a1 = pointer to filename
 		lea	fe_filename(a5),a2
-		move.w	#FILENAMESZ-1,d1
+		moveq	#sizeof_filename-1,d1
 
-.CopyFileName:
-		move.b	(a1)+,(a2)+
-		dbf	d1,.CopyFileName
+	.loop:
+		move.b	(a1)+,(a2)+		; copy filename to variables
+		dbf	d1,.loop
 		rts
 
 ; -------------------------------------------------------------------------
 ; Find a file
-; -------------------------------------------------------------------------
-; PARAMETERS
-;	a0.l  - File name
-; rETURNS:
-;	a0.l  - Found file information
-;	cc/cs - Found/Not found
+
+; input:
+;	a0.l  - file name
+
+; output:
+;	a0.l  - found file information
+;	cc/cs - found/not found
 ; -------------------------------------------------------------------------
 
 FileFunc_FindFile:
-		move.l	a2,-(sp)			; save a2
-		moveq	#0,d1				; Prepare to find file
+		pushr.l	a2			; save a2
+		moveq	#0,d1				; pepare to find file
 		movea.l	a0,a1
-		move.w	#FILENAMESZ-2,d0
+		moveq	#sizeof_filename-2,d0
 
-.GetNameLength:
-		tst.b	(a1)				; is this character a termination character?
-		beq.s	.GotNameLength			; if so, branch
+	.get_name_length:
+		tst.b	(a1)				; is this character a terminator?
+		beq.s	.got_length			; if so, branch
 		cmpi.b	#';',(a1)			; is this character a semicolon?
-		beq.s	.GotNameLength			; if so, branch
+		beq.s	.got_length			; if so, branch
 		cmpi.b	#' ',(a1)			; is this character a space?
-		beq.s	.GotNameLength			; if so, branch
+		beq.s	.got_length			; if so, branch
 
 		addq.w	#1,d1				; increment length
-		addq.w	#1,a1				; Next character
-		dbf	d0,.GetNameLength		; Loop until finished
+		addq.w	#1,a1				; next character
+		dbf	d0,.get_name_length		; loop until finished
 
-.GotNameLength:
-		move.w	fe_filecount(a5),d0		; Prepare to scan file list
-		movea.l	a0,a1
-		lea	fe_filelist(a5),a0
+	.got_length:
+		move.w	fe_filecount(a5),d0		; prepare to scan file list
+		movea.l	a0,a1			; a1 - filename
+		lea	fe_filelist(a5),a0		; return this in a0 if it is the first tile
 
-		lea	.FirstFile(pc),a2		; Are we retrieving the first file?
+		lea	.first_file(pc),a2		; are we retrieving the first file?
 		bsr.w	CompareStrings
-		beq.w	.Done				; if so, branch
+		beq.w	.done				; if so, branch
 
 		movea.l	a0,a2				; start scanning list
 		subq.w	#1,d0
 
-.FindFile:
+	.find_file:
 		bsr.w	CompareStrings			; is this file entry the one we are looking for?
-		beq.s	.FileFound			; if so, branch
-		adda.w	#FILEENTRYSZ,a2		; go to next file
-		dbf	d0,.FindFile			; Loop until file is found or until all files are scanned
-		bra.s	.FileNotFound			; File not found
+		beq.s	.found			; if so, branch
+		adda.w	#sizeof_fileentry,a2		; go to next file
+		dbf	d0,.find_file			; loop until file is found or until all files are scanned
+		bra.s	.not_found			; file not found
 
-.FileFound:
-		moveq	#1,d0				; Mark as found
+	.found:
+		moveq	#1,d0				; mark as found
 		movea.l	a2,a0				; get file entry
 
-.Done:
-		movea.l	(sp)+,a2			; restore a2
+	.done:
+		popr.l	a2			; restore a2
 		rts
+; ===========================================================================
 
-.FileNotFound:
-		move	#1,ccr				; Mark as not found
+.not_found:
+		move	#1,ccr				; mark as not found
 		bra.s	.Done
+; ===========================================================================
 
-; -------------------------------------------------------------------------
-
-.FirstFile:
-		dc.b	"\          ", 0
+	.first_file:
+		dc.b	"\          ",0
 		even
 
 ; -------------------------------------------------------------------------
-; read sectors from CD
+; Read sectors from CD
 ; -------------------------------------------------------------------------
 
 ReadSectors:
-		move.l	(sp)+,fe_returnaddr(a5)		; save return address
-		move.w	#0,fe_sectorsread(a5)		; reset sectors read count
+		popr.l	fe_returnaddr(a5)		; save return address
+	;	move.w	#0,fe_sectorsread(a5)		; reset sectors read count
+		clr.w	fe_sectorsread(a5)		; reset sectors read count
 		move.w	#30,fe_retries(a5)		; set retry counter
 
-.StartRead:
-		move.b	fe_cdcmode(a5),(mcd_cdd_mode).w	; set CDC device
+.startread:
+	;	move.b	fe_cdcmode(a5),(mcd_cdc_mode&$FFFFFF).l	; set CDC device
+	;	move.b	fe_cdcmode(a5),(mcd_cdc_mode).w	; set CDC device
 
 		lea	fe_sector(a5),a0			; get sector information
 		move.l	(a0),d0				; get sector frame (in BCD)
@@ -400,158 +428,174 @@ ReadSectors:
 		abcd	d1,d0
 		move.b	d0,fe_sectorframe(a5)
 
-		move.w	#CDCSTOP,d0			; stop CDC
+		move.w	#DecoderStop,d0			; stop CDC
 		jsr	(_CDBIOS).w
-		move.w	#ROMREADN,d0			; start reading
+	;	move.w	#ROMReadNum,d0			; start reading
+		moveq	#ROMReadNum,d0			; start reading
 		jsr	(_CDBIOS).w
 		move.w	#600,fe_waittime(a5)		; set wait timer
 
-.Bookmark:
-		bsr.w	FileMode_SetOperMark		; set bookmark
+	.bookmark:
+		bsr.w	FileMode_SetOperMark		; set bookmark; continue at next VBlank
+; ===========================================================================
 
-.CheckReady:
-		move.w	#CDCSTAT,d0			; Check if data is ready
+.checkready:
+		move.w	#DecoderStatus,d0			; is data ready to read?
 		jsr	(_CDBIOS).w
-		bcc.s	.ReadData			; if so, branch
-		subq.w	#1,fe_waittime(a5)		; Decrement wait v_time
-		bge.s	.Bookmark			; if we are still waiting, branch
+		bcc.s	.read				; if so, branch
+		subq.w	#1,fe_waittime(a5)		; decrement wait time
+		bge.s	.bookmark			; if we are still waiting, branch
 		subq.w	#1,fe_retries(a5)		; if we waited too long, decrement retry counter
-		bge.s	.StartRead			; if we can still retry, do it
-		bra.w	.ReadFailed			; give up
+		bge.s	.startread			; if we can still retry, do it
+		bra.w	.read_failed			; give up
+; ===========================================================================
 
-.ReadData:
-		move.w	#CDCREAD,d0			; read data
+.read:
+		move.w	#DecoderRead,d0			; read data
 		jsr	(_CDBIOS).w
-		bcs.w	.ReadRetry			; if the data isn't read, branch
-		move.l	d0,fe_readtime(a5)		; get v_time of sector read
-		move.b	fe_sectorframe(a5),d0		; Does the read sector match the sector we want?
-		cmp.b	fe_readframe(a5),d0
-		beq.s	.WaitDataSet			; if so, branch
+	;	bcs.w	.read_retry			; if the data wasn't read, branch
+		bcs.s	.read_retry			; if the data wasn't read, branch
+		move.l	d0,fe_readtime(a5)		; get time of sector read
+		move.b	fe_sectorframe(a5),d0
+		cmp.b	fe_readframe(a5),d0		; does the read sector match the sector we want?
+		beq.s	.wait_data_set			; if so, branch
 
-.ReadRetry:
-		subq.w	#1,fe_retries(a5)		; Decrement retry counter
-		bge.w	.StartRead			; if we can still retry, do it
-		bra.w	.ReadFailed			; give up
+	.read_retry:
+		subq.w	#1,fe_retries(a5)		; decrement retry counter
+		bge.w	.startread			; if we can still retry, do it
+		bra.w	.read_failed			; give up
+; ===========================================================================
 
-.WaitDataSet:
-		move.w	#$800-1,d0			; Wait for data set
+.wait_data_set:
+		move.w	#$800-1,d0			; wait for data set
 
-.WaitDataSetLoop:
-		btst	#6,GACDCDEVICE&$FFFFFF
-		dbne	d0,.WaitDataSetLoop		; Loop until ready or until it takes too long
-		bne.s	.Transfe_rData			; if the data is ready to be transfe_red, branch
+	.wait_loop:
+	;	btst	#cdc_dataready_bit,(mcd_cdc_mode&$FFFFFF).l
+		btst	#cdc_dataready_bit,(mcd_cdc_mode).w
+		dbne	d0,.wait_loop		; loop until ready or until it takes too long
+		bne.s	.transferdata			; if the data is ready to be transfered, branch
 
-		subq.w	#1,fe_retries(a5)		; Decrement retry counter
-		bge.w	.StartRead			; if we can still retry, do it
-		bra.w	.ReadFailed			; give up
+		subq.w	#1,fe_retries(a5)		; decrement retry counter
+		bge.w	.startread			; if we can still retry, do it
+		bra.w	.read_failed			; give up
+; ===========================================================================
 
-.Transfe_rData:
-		cmpi.b	#2,fe_cdcmode(a5)			; is the CDC device set to "Main CPU"
-		beq.w	.MainCPUTransfe_r		; if so, branch
+.transferdata:
+		cmpi.b	#cdc_dest_main,fe_cdcmode(a5)			; is the CDC device set to "Main CPU"?
+		beq.w	.mainCPU_transfer		; if so, branch
 
-		move.w	#CDCTRN,d0			; Transfe_r data
+		move.w	#DecoderTransfer,d0			; transfer data
 		movea.l	fe_readbuffer(a5),a0
 		lea	fe_readtime(a5),a1
 		jsr	(_CDBIOS).w
-		bcs.s	.CopyRetry			; if it wasn't successful, branch
+		bcs.s	.copy_retry			; if it wasn't successful, branch
 
-		move.b	fe_sectorframe(a5),d0		; Does the read sector match the sector we want?
+		move.b	fe_sectorframe(a5),d0		; does the read sector match the sector we want?
 		cmp.b	fe_readframe(a5),d0
-		beq.s	.IncSectorFrame			; if so, branch
+		beq.s	.incsectorframe			; if so, branch
 
-.CopyRetry:
-		subq.w	#1,fe_retries(a5)		; Decrement retry counter
-		bge.w	.StartRead			; if we can still retry, do it
-		bra.w	.ReadFailed			; give up
+	.copy_retry:
+		subq.w	#1,fe_retries(a5)		; decrement retry counter
+		bge.w	.startread			; if we can still retry, do it
+		bra.w	.read_failed			; give up
+; ===========================================================================
 
-.IncSectorFrame:
+.incsectorframe:
 		move	#0,ccr				; Next sector frame
 		moveq	#1,d1
 		abcd	d1,d0
 		move.b	d0,fe_sectorframe(a5)
 		cmpi.b	#$75,fe_sectorframe(a5)		; should we wrap it?
-		bcs.s	.FinishSectorRead		; if not, branch
-		move.b	#0,fe_sectorframe(a5)		; if so, wrap it
+		bcs.s	.finish_sector_read		; if not, branch
+	;	move.b	#0,fe_sectorframe(a5)		; if so, wrap it
+		clr.b	fe_sectorframe(a5)		; if so, wrap it
 
-.FinishSectorRead:
-		move.w	#CDCACK,d0			; Finish data read
+	.finish_sector_read:
+		move.w	#DecoderAck,d0			; let decoder know read is finished
 		jsr	(_CDBIOS).w
 
-		move.w	#6,fe_waittime(a5)		; set new wait v_time
+		move.w	#6,fe_waittime(a5)		; set new wait time
 		move.w	#30,fe_retries(a5)		; set new retry counter
-		addi.l	#$800,fe_readbuffer(a5)		; Advance read buffer
+		addi.l	#$800,fe_readbuffer(a5)		; advance read buffer
 		addq.w	#1,fe_sectorsread(a5)		; increment sectors read counter
-		addq.l	#1,fe_sector(a5)			; Next sector
-		subq.l	#1,fe_sectorcount(a5)		; Decrement sectors to read
-		bgt.w	.CheckReady			; if there are still sectors to read, branch
-		move.w	#FSTAT_OK,fe_status(a5)		; Mark as successful
+		addq.l	#1,fe_sector(a5)			; next sector
+		subq.l	#1,fe_sectorcount(a5)		; decrement sectors to read
+		bgt.w	.checkready			; if there are still sectors to read, branch
+		move.w	#fstatus_ok,fe_status(a5)		; mark as successful
 
-.Done:
-		move.b	fe_cdcmode(a5),GACDCDEVICE&$FFFFFF	; set CDC device
+	.done:
+	;	move.b	fe_cdcmode(a5),(mcd_cdc_mode&$FFFFFF).l
+		move.b	fe_cdcmode(a5),(mcd_cdc_mode).w	; set CDC device
 		movea.l	fe_returnaddr(a5),a0		; go to saved return address
 		jmp	(a0)
+; ===========================================================================
 
-.ReadFailed:
-		move.w	#FSTAT_READFAIL,fe_status(a5)	; Mark as failed
-		bra.s	.Done
+.read_failed:
+		move.w	#fstatus_readfail,fe_status(a5)	; mark as failed
+		bra.s	.done
+; ===========================================================================
 
-.MainCPUTransfe_r:
+.mainCPU_transfer:
 		move.w	#6,fe_waittime(a5)		; set new wait v_time
 
-.WaitMainCopy:
-		bsr.w	FileMode_SetOperMark		; set bookmark
-		btst	#7,GACDCDEVICE&$FFFFFF		; Has the data been transfe_rred?
-		bne.s	.FinishSectorRead		; if so, branch
-		subq.w	#1,fe_waittime(a5)		; Decrement wait v_time
-		bge.s	.WaitMainCopy			; if we are still waiting, branch
-		bra.s	.ReadFailed			; if we have waited too long, branch
+	.waitmaincopy:
+		bsr.w	FileMode_SetOperMark		; set bookmark, return next VBlank
+	;	btst	#cdc_endtrans_bit,(mcd_cdc_mode&$FFFFFF).l	; has the data been transferred?
+		btst	#cdc_endtrans_bit,(mcd_cdc_mode).w		; has the data been transferred?
+		bne.s	.finish_sector_read		; if so, branch
+		subq.w	#1,fe_waittime(a5)		; decrement wait time
+		bge.s	.waitmaincopy			; if we are still waiting, branch
+		bra.s	.read_failed			; if we have waited too long, branch
 
 ; -------------------------------------------------------------------------
 ; Compare two strings
-; -------------------------------------------------------------------------
-; PARAMETERS:
-;	d1.w  - Number of characters to compare
-;	a1.l  - Pointer to string 1
-;	a2.l  - Pointer to string 2
-; rETURNS:
-;	eq/ne - Same/Diffe_rent
+
+; input:
+;	d1.w  - number of characters to compare
+;	a1.l  - pointer to string 1
+;	a2.l  - pointer to string 2
+
+; output:
+;	eq/ne - same/different
 ; -------------------------------------------------------------------------
 
 CompareStrings:
-		movem.l	d1/a1-a2,-(sp)			; save registers
+		pushr.l	d1/a1-a2			; save registers
 
-.Compare:
+	.compare:
 		cmpm.b	(a1)+,(a2)+			; Compare characters
-		bne.s	.Done				; if they aren't the same branch
-		dbf	d1,.Compare			; Loop until all characters are scanned
+		bne.s	.done				; if they aren't the same, branch
+		dbf	d1,.compare			; Loop until all characters are scanned
 
-		moveq	#0,d1				; Mark strings as the same
+		moveq	#0,d1				; mark strings as the same
 
-.Done:
-		movem.l	(sp)+,d1/a1-a2			; restore registers
+	.done:
+		popr.l	d1/a1-a2			; restore registers
 		rts
 
 ; -------------------------------------------------------------------------
-; Load an FMV
-; -------------------------------------------------------------------------
-; PARAMETERS:
-;	a0.l - File name
+; Initialize loading an FMV
+
+; input:
+
+;	a0.l - filename
 ; -------------------------------------------------------------------------
 
 FileFunc_LoadFMV:
-		move.b	#1<<FMVF_SECT,fe_fmv(a5)		; Mark as reading data section 1
-		move.w	#FMODE_LOADFMV,fe_opermode(a5)	; set operation mode to "load FMV"
-		move.l	#FMVPCMBUF,fe_readbuffer(a5)	; Prepare to read PCM data
-		move.w	#0,fe_fmv_sectframe(a5)		; reset FMV sector frame
-		bset	#FMVF_SECT,fe_fmv(a5)		; Mark as reading data section 1
+		move.b	#1<<fmvflag_sect,fe_fmv(a5)		; mark as reading data section 1
+		move.w	#FileMode_LoadFMV,fe_opermode(a5)	; set operation mode to "load FMV"
+		move.l	#fmvflag_pbuf,fe_readbuffer(a5)	; prepare to read PCM data
+		;move.w	#0,fe_fmv_sectframe(a5)		; reset FMV sector frame
+		clr.w	fe_fmv_sectframe(a5)
+		bset	#fmvflag_sect,fe_fmv(a5)		; mark as reading data section 1
 
-		movea.l	a0,a1				; Copy file name
+		movea.l	a0,a1				; a1 = pointer to filename
 		lea	fe_filename(a5),a2
-		move.w	#FILENAMESZ-1,d1
+		move.w	#sizeof_filename-1,d1
 
-.CopyFileName:
-		move.b	(a1)+,(a2)+
-		dbf	d1,.CopyFileName
+	.loop:
+		move.b	(a1)+,(a2)+		; copy filename to variables
+		dbf	d1,.loop
 		rts
 
 ; -------------------------------------------------------------------------
@@ -559,48 +603,51 @@ FileFunc_LoadFMV:
 ; -------------------------------------------------------------------------
 
 FileMode_LoadFMV:
-		move.b	#3,fe_cdcmode(a5)			; set CDC device to "Sub CPU"
-		lea	fe_filename(a5),a0		; Find file
+		move.b	#cdc_dest_sub,fe_cdcmode(a5)			; set CDC device to "Sub CPU"
+		lea	fe_filename(a5),a0		; find file
 		bsr.w	FileFunc_FindFile
-		bcs.w	.FileNotFound			; if it wasn't found, branch
+		bcs.w	.not_found			; if it wasn't found, branch
 
-		move.l	fileSector(a0),fe_sector(a5)	; get file sector
-		move.l	fileLength(a0),d1		; get file size
+		move.l	file_sector(a0),fe_sector(a5)	; get file sector
+		move.l	file_length(a0),d1		; get file size
 		move.l	d1,fe_filesize(a5)
 
 		move.l	#1,fe_sectorcount(a5)		; get file size in sectors
 
-.GetSectors:
-		subi.l	#$800,d1
-		ble.s	.ReadFile
+	.get_sectors:
+		subi.l	#sizeof_sector,d1
+		ble.s	.read
 		addq.l	#1,fe_sectorcount(a5)
-		bra.s	.GetSectors
+		bra.s	.get_sectors
 
-.ReadFile:
+	.read:
 		bsr.w	ReadFMVSectors			; read FMV file data
-		cmp.w	#FSTAT_OK,fe_status(a5)		; Was the operation a success?
-		beq.s	.Done				; if so, branch
-		move.w	#FSTAT_LOADFAIL,fe_status(a5)	; Mark as failed
+		cmp.w	#fstatus_ok,fe_status(a5)		; was the operation a success?
+		beq.s	.done				; if so, branch
+		move.w	#fstatus_loadfail,fe_status(a5)	; mark as failed
 
-.Done:
-		move.w	#FMODE_NONE,fe_opermode(a5)	; set operation mode to "none"
-		bra.w	FileOperation			; Loop back
+	.done:
+		move.w	#id_FileMode_None,fe_opermode(a5)	; set operation mode to "none"
+		bra.w	FileOperation			; loop back
+; ===========================================================================
 
-.FileNotFound:
-		move.w	#FSTAT_NOTFOUND,fe_status(a5)	; Mark as not found
-		bra.s	.Done
+	.not_found:
+		move.w	#fstatus_notfound,fe_status(a5)	; mark as not found
+		bra.s	.done
 
 ; -------------------------------------------------------------------------
-; read FMV file data from CD
+; Read FMV file data from CD
 ; -------------------------------------------------------------------------
 
 ReadFMVSectors:
-		move.l	(sp)+,fe_returnaddr(a5)		; save return address
-		move.w	#0,fe_sectorsread(a5)		; reset sectors read count
+		popr.l	fe_returnaddr(a5)		; save return address
+	;	move.w	#0,fe_sectorsread(a5)		; reset sectors read count
+		clr.w	fe_sectorsread(a5)		; reset sectors read count
 		move.w	#10,fe_retries(a5)		; set retry counter
 
-.StartRead:
-		move.b	fe_cdcmode(a5),GACDCDEVICE&$FFFFFF	; set CDC device
+.startread:
+	;	move.b	fe_cdcmode(a5),(mcd_cdc_mode&$FFFFFF).l	; set CDC device
+		move.b	fe_cdcmode(a5),(mcd_cdc_mode).w	; set CDC device
 
 		lea	fe_sector(a5),a0			; get sector information
 		move.l	(a0),d0				; get sector frame (in BCD)
@@ -615,203 +662,221 @@ ReadFMVSectors:
 		abcd	d1,d0
 		move.b	d0,fe_sectorframe(a5)
 
-		move.w	#CDCSTOP,d0			; stop CDC
+		move.w	#DecoderStop,d0			; stop CDC
 		jsr	(_CDBIOS).w
-		move.w	#ROMREADN,d0			; start reading
+	;	move.w	#ROMReadNum,d0			; start reading
+		moveq	#ROMReadNum,d0			; start reading
 		jsr	(_CDBIOS).w
 		move.w	#600,fe_waittime(a5)		; set wait timer
 
-.Bookmark:
-		bsr.w	FileMode_SetOperMark		; set bookmark
+	.bookmark:
+		bsr.w	FileMode_SetOperMark		; set bookmark; continue at next VBlank
+; ===========================================================================
 
-.CheckReady:
-		move.w	#CDCSTAT,d0			; Check if data is ready
+.checkready:
+		move.w	#DecoderStatus,d0			; is data ready to read?
 		jsr	(_CDBIOS).w
-		bcc.s	.ReadData			; if so, branch
-		subq.w	#1,fe_waittime(a5)		; Decrement wait v_time
-		bge.s	.Bookmark			; if we are still waiting, branch
+		bcc.s	.read				; if so, branch
+		subq.w	#1,fe_waittime(a5)		; decrement wait time
+		bge.s	.bookmark			; if we are still waiting, branch
 		subq.w	#1,fe_retries(a5)		; if we waited too long, decrement retry counter
-		bge.s	.StartRead			; if we can still retry, do it
-		bra.w	.ReadFailed			; give up
+		bge.s	.startread			; if we can still retry, do it
+		bra.w	.read_failed			; give up
+; ===========================================================================
 
-.ReadData:
-		move.w	#CDCREAD,d0			; read data
+.read:
+		move.w	#DecoderRead,d0			; read data
 		jsr	(_CDBIOS).w
-		bcs.w	.ReadRetry			; if the data isn't read, branch
-		move.l	d0,fe_readtime(a5)		; get v_time of sector read
-		move.b	fe_sectorframe(a5),d0		; Does the read sector match the sector we want?
-		cmp.b	fe_readframe(a5),d0
-		beq.s	.WaitDataSet			; if so, branch
+		bcs.w	.read_retry			; if the data wasn't read, branch
+		move.l	d0,fe_readtime(a5)		; get time of sector read
+		move.b	fe_sectorframe(a5),d0
+		cmp.b	fe_readframe(a5),d0		; does the read sector match the sector we want?
+		beq.s	.wait_data_set			; if so, branch
 
-.ReadRetry:
+.read_retry:
 		addq.l	#1,fe_fmvfailcount(a5)		; increment fail counter
-		subq.w	#1,fe_retries(a5)		; Decrement retry counter
-		bge.w	.StartRead			; if we can still retry, do it
-		bra.w	.ReadFailed			; give up
+		subq.w	#1,fe_retries(a5)		; decrement retry counter
+		bge.w	.startread			; if we can still retry, do it
+		bra.w	.read_failed			; give up
+; ===========================================================================
 
-.WaitDataSet:
-		move.w	#$800-1,d0			; Wait for data set
+.wait_data_set:
+		move.w	#$800-1,d0			; wait for data set
 
-.WaitDataSetLoop:
-		btst	#6,GACDCDEVICE&$FFFFFF
-		dbne	d0,.WaitDataSetLoop		; Loop until ready or until it takes too long
-		bne.s	.Transfe_rData			; if the data is ready to be transfe_red, branch
+	.wait_loop:
+	;	btst	#cdc_dataready_bit,(mcd_cdc_mode&$FFFFFF).l
+		btst	#cdc_dataready_bit,(mcd_cdc_mode).w
+		dbne	d0,.wait_loop		; loop until ready or until it takes too long
+		bne.s	.transferdata			; if the data is ready to be transfered, branch
 
-		subq.w	#1,fe_retries(a5)		; Decrement retry counter
-		bge.w	.StartRead			; if we can still retry, do it
-		bra.w	.ReadFailed			; give up
+		subq.w	#1,fe_retries(a5)		; decrement retry counter
+		bge.w	.startread			; if we can still retry, do it
+		bra.w	.read_failed			; give up
+; ===========================================================================
 
-.Transfe_rData:
-		cmpi.b	#2,fe_cdcmode(a5)			; is the CDC device set to "Main CPU"
-		beq.w	.MainCPUTransfe_r		; if so, branch
+.transferdata:
+		cmpi.b	#cdc_dest_main,fe_cdcmode(a5)			; is the CDC device set to "Main CPU"?
+		beq.w	.mainCPU_transfer		; if so, branch
 
-		move.w	#CDCTRN,d0			; Transfe_r data
+		move.w	#DecoderTransfer,d0			; transfer data
 		movea.l	fe_readbuffer(a5),a0
 		lea	fe_readtime(a5),a1
 		jsr	(_CDBIOS).w
-		bcs.s	.CopyRetry			; if it wasn't successful, branch
+		bcs.s	.copy_retry			; if it wasn't successful, branch
 
-		move.b	fe_sectorframe(a5),d0		; Does the read sector match the sector we want?
+		move.b	fe_sectorframe(a5),d0		; does the read sector match the sector we want?
 		cmp.b	fe_readframe(a5),d0
-		beq.s	.IncSectorFrame			; if so, branch
+		beq.s	.incsectorframe			; if so, branch
 
-.CopyRetry:
+	.copy_retry:
 		addq.l	#1,fe_fmvfailcount(a5)		; increment fail counter
-		subq.w	#1,fe_retries(a5)		; Decrement retry counter
-		bge.w	.StartRead			; if we can still retry, do it
-		bra.w	.ReadFailed			; give up
+		subq.w	#1,fe_retries(a5)		; decrement retry counter
+		bge.w	.startread			; if we can still retry, do it
+		bra.w	.read_failed			; give up
+; ===========================================================================
 
-.IncSectorFrame:
-		move	#0,ccr				; Next sector frame
+.incsectorframe:
+		move	#0,ccr				; next sector frame
 		moveq	#1,d1
 		abcd	d1,d0
 		move.b	d0,fe_sectorframe(a5)
 		cmpi.b	#$75,fe_sectorframe(a5)		; should we wrap it?
-		bcs.s	.FinishSectorRead		; if not, branch
-		move.b	#0,fe_sectorframe(a5)		; if so, wrap it
+		bcs.s	.finish_sector_read		; if not, branch
+	;	move.b	#0,fe_sectorframe(a5)		; if so, wrap it
+		clr.b	fe_sectorframe(a5)		; if so, wrap it
 
-.FinishSectorRead:
-		move.w	#CDCACK,d0			; Finish data read
+	.finish_sector_read:
+		move.w	#DecoderAck,d0			; finish data read
 		jsr	(_CDBIOS).w
 
-		move.w	#6,fe_waittime(a5)		; set new wait v_time
+		move.w	#6,fe_waittime(a5)		; set new wait time
 		move.w	#10,fe_retries(a5)		; set new retry counter
 
 		move.w	fe_fmv_sectframe(a5),d0		; get current sector frame
-		cmpi.w	#15,d0				; is it v_time to load graphics data now?
-		beq.s	.PCMDone			; if so, branch
-		cmpi.w	#74,d0				; Are we done loading graphics data?
-		beq.s	.GfxDone			; if so, branch
-		addi.l	#$800,fe_readbuffer(a5)		; Advance read buffer
-		bra.w	.Advance
+		cmpi.w	#15,d0				; is it time to load graphics data now?
+		beq.s	.pcm_done			; if so, branch
+		cmpi.w	#74,d0				; are we done loading graphics data?
+		beq.s	.gfx_done			; if so, branch
+		addi.l	#$800,fe_readbuffer(a5)		; advance read buffer
+		bra.w	.advance
+; ===========================================================================
 
-.PCMDone:
-		move.b	#FMVT_GFX,fe_fmv_datatype(a5)	; set graphics data type
-		bclr	#FMVF_SECT,fe_fmv(a5)		; Mark as reading data section 2
-		move.l	#FMVGFXBUF,fe_readbuffer(a5)	; set read buffer for graphics data
-		bra.w	.Advance
+.pcm_done:
+		move.b	#fmvdata_gfx,fe_fmv_datatype(a5)	; set graphics data type
+		bclr	#fmvflag_sect,fe_fmv(a5)		; mark as reading data section 2
+		move.l	#word_ram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
+		bra.w	.advance
+; ===========================================================================
 
-.GfxDone:
-		bset	#0,mcd_sub_flag.w			; sync with Main CPU
-		bset	#FMVF_SECT,fe_fmv(a5)		; Mark as reading data section 1
-		bset	#FMVF_READY,fe_fmv(a5)		; Mark as ready
+.gfx_done:
+		bset	#0,(mcd_sub_flag).w			; sync with main CPU
+		bset	#fmvflag_sect,fe_fmv(a5)		; mark as reading data section 1
+		bset	#fmvflag_ready,fe_fmv(a5)		; mark as ready
 
-.WaitMain:
-		btst	#0,mcd_main_flag.w			; Wait for Main CPU
-		beq.s	.WaitMain
-		btst	#0,mcd_main_flag.w
-		beq.s	.WaitMain
-		bclr	#0,mcd_sub_flag.w
+	.waitmainCPU:
+		btst	#0,(mcd_main_flag).w			; wait for main CPU
+		beq.s	.waitmainCPU
+		btst	#0,(mcd_main_flag).w
+		beq.s	.waitmainCPU
+		bclr	#0,(mcd_sub_flag).w
 
-		bchg	#0,mcd_mem_mode.w			; swap Word RAM banks
+		bchg	#bank_assignment_bit,(mcd_mem_mode).w			; swap word RAM banks
 
-.WaitWordRAM:
-		btst	#1,mcd_mem_mode.w
-		bne.s	.WaitWordRAM
+	.waitwordRAM:
+		btst	#bank_swap_request_bit,(mcd_mem_mode).w
+		bne.s	.waitwordRAM
 
-		move.b	#FMVT_PCM,fe_fmv_datatype(a5)	; set PCM data type
-		move.l	#FMVPCMBUF,fe_readbuffer(a5)	; set read buffer for PCM data
-		bset	#FMVF_SECT,fe_fmv(a5)		; Mark as reading data section 1
+		move.b	#fmvdata_pcm,fe_fmv_datatype(a5)	; set PCM data type
+		move.l	#fmv_pcm_buffer,fe_readbuffer(a5)	; set read buffer for PCM data
+		bset	#fmvflag_sect,fe_fmv(a5)		; mark as reading data section 1
 
-.Advance:
+.advance:
 		addq.w	#1,fe_sectorsread(a5)		; increment sectors read counter
-		addq.l	#1,fe_sector(a5)			; Next sector
+		addq.l	#1,fe_sector(a5)			; next sector
 		addq.w	#1,fe_fmv_sectframe(a5)		; increment FMV sector frame
 		cmpi.w	#75,fe_fmv_sectframe(a5)		; should we wrap it?
-		bcs.s	.CheckSectorsLeft		; if not, branch
-		move.w	#0,fe_fmv_sectframe(a5)		; if so, wrap it
+		bcs.s	.checksectorsleft		; if not, branch
+	;	move.w	#0,fe_fmv_sectframe(a5)		; if so, wrap it
+		clr.w	fe_fmv_sectframe(a5)		; if so, wrap it
 
-.CheckSectorsLeft:
-		subq.l	#1,fe_sectorcount(a5)		; Decrement sectors to read
-		bgt.w	.CheckReady			; if there are still sectors to read, branch
-		move.w	#FSTAT_OK,fe_status(a5)		; Mark as successful
+	.checksectorsleft:
+		subq.l	#1,fe_sectorcount(a5)		; decrement sectors to read
+		bgt.w	.checkready			; if there are still sectors to read, branch
+		move.w	#fstatus_ok,fe_status(a5)		; mark as successful
 
-.Done:
-		move.b	fe_cdcmode(a5),GACDCDEVICE&$FFFFFF	; set CDC device
+.done:
+	;	move.b	fe_cdcmode(a5),(mcd_cdc_mode&$FFFFFF).l	; set CDC device
+		move.b	fe_cdcmode(a5),(mcd_cdc_mode).w	; set CDC device
 		movea.l	fe_returnaddr(a5),a0		; go to saved return address
 		jmp	(a0)
+; ===========================================================================
 
-.ReadFailed:
+.read_failed:
 		move.w	fe_fmv_sectframe(a5),d0		; get current sector frame
-		cmpi.w	#15,d0				; is it v_time to load graphics data now?
-		beq.s	.PCMDone2			; if so, branch
+		cmpi.w	#15,d0				; is it time to load graphics data now?
+		beq.s	.pcm_done2			; if so, branch
 		cmpi.w	#74,d0				; Are we done loading graphics data?
-		beq.s	.GfxDone2			; if so, branch
-		addi.l	#$800,fe_readbuffer(a5)		; Advance read buffer
+		beq.s	.gfx_done2			; if so, branch
+		addi.l	#$800,fe_readbuffer(a5)		; advance read buffer
+		bra.w	.advance2
+; ===========================================================================
+
+.pcm_done2:
+		move.b	#fmvdata_gfx,fe_fmv_datatype(a5)	; set graphics data type
+		bclr	#fmvflag_sect,fe_fmv(a5)		; mark as reading data section 2
+		move.l	#word_ram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
 		bra.w	.Advance2
+; ===========================================================================
 
-.PCMDone2:
-		move.b	#FMVT_GFX,fe_fmv_datatype(a5)	; set graphics data type
-		bclr	#FMVF_SECT,fe_fmv(a5)		; Mark as reading data section 2
-		move.l	#FMVGFXBUF,fe_readbuffer(a5)	; set read buffer for graphics data
-		bra.w	.Advance2
+.gfx_done2:
+		bset	#0,(mcd_sub_flag).w			; sync with main CPU
+		bset	#fmvflag_sect,fe_fmv(a5)		; mark as reading data section 1
+		bset	#fmvflag_ready,fe_fmv(a5)		; mark as ready
 
-.GfxDone2:
-		bset	#0,mcd_sub_flag.w			; sync with Main CPU
-		bset	#FMVF_SECT,fe_fmv(a5)		; Mark as reading data section 1
-		bset	#FMVF_READY,fe_fmv(a5)		; Mark as ready
+	.waitmainCPU2:
+		btst	#0,(mcd_main_flag).w			; wait for main CPU
+		beq.s	.waitmainCPU2
+		btst	#0,(mcd_main_flag).w
+		beq.s	.waitmainCPU2
+		bclr	#0,(mcd_sub_flag).w
 
-.WaitMain2:
-		btst	#0,mcd_main_flag.w			; Wait for Main CPU
-		beq.s	.WaitMain2
-		btst	#0,mcd_main_flag.w
-		beq.s	.WaitMain2
-		bclr	#0,mcd_sub_flag.w
+		bchg	#bank_assignment_bit,(mcd_mem_mode).w			; swap Word RAM banks
 
-		bchg	#0,mcd_mem_mode.w			; swap Word RAM banks
+	.waitwordram2:
+		btst	#bank_swap_request_bit,(mcd_mem_mode).w
+		bne.s	.waitwordram2
 
-.WaitWordRAM2:
-		btst	#1,mcd_mem_mode.w
-		bne.s	.WaitWordRAM2
+		move.b	#fmvdata_pcm,fe_fmv_datatype(a5)	; set PCM data type
+		move.l	#fmv_pcm_buffer,fe_readbuffer(a5)	; set read buffer for PCM data
+		bset	#fmvflag_sect,fe_fmv(a5)		; mark as reading data section 1
 
-		move.b	#FMVT_PCM,fe_fmv_datatype(a5)	; set PCM data type
-		move.l	#FMVPCMBUF,fe_readbuffer(a5)	; set read buffer for PCM data
-		bset	#FMVF_SECT,fe_fmv(a5)		; Mark as reading data section 1
-
-.Advance2:
+.advance2:
 		addq.w	#1,fe_sectorsread(a5)		; increment sectors read counter
-		addq.l	#1,fe_sector(a5)			; Next sector
+		addq.l	#1,fe_sector(a5)			; next sector
 		addq.w	#1,fe_fmv_sectframe(a5)		; increment FMV sector frame
 		cmpi.w	#75,fe_fmv_sectframe(a5)		; should we wrap it?
-		bcs.s	.CheckSectorsLeft2		; if not, branch
-		move.w	#0,fe_fmv_sectframe(a5)		; if so, wrap it
+		bcs.s	.checksectorsleft2		; if not, branch
+	;	move.w	#0,fe_fmv_sectframe(a5)		; if so, wrap it
+		clr.w	fe_fmv_sectframe(a5)		; if so, wrap it
 
-.CheckSectorsLeft2:
-		subq.l	#1,fe_sectorcount(a5)		; Decrement sectors to read
-		bgt.w	.StartRead			; if there are still sectors to read, branch
-		move.w	#FSTAT_FMVFAIL,fe_status(a5)	; Mark as failed
-		bra.w	.Done
+	.checksectorsleft2:
+		subq.l	#1,fe_sectorcount(a5)		; decrement sectors to read
+		bgt.w	.startread			; if there are still sectors to read, branch
+		move.w	#fstatus_fmvfail,fe_status(a5)	; mark as failed
+		bra.w	.done
+; ===========================================================================
 
-.MainCPUTransfe_r:
+.mainCPU_transfer:
 		move.w	#6,fe_waittime(a5)		; set new wait v_time
 
-.WaitMainCopy:
+	.waitmaincopy:
 		bsr.w	FileMode_SetOperMark		; set bookmark
-		btst	#7,GACDCDEVICE&$FFFFFF		; Has the data been transfe_rred?
-		bne.w	.FinishSectorRead		; if so, branch
-		subq.w	#1,fe_waittime(a5)		; Decrement wait v_time
-		bge.s	.WaitMainCopy			; if we are still waiting, branch
-		bra.w	.ReadFailed			; if we have waited too long, branch
+	;	btst	#cdc_endtrans_bit,(mcd_cdc_mode&$FFFFFF).l	; has the data been transferred?
+		btst	#cdc_endtrans_bit,(mcd_cdc_mode).w		; has the data been transferred?
+		bne.w	.finish_sector_read		; if so, branch
+		subq.w	#1,fe_waittime(a5)		; decrement wait v_time
+		bge.s	.waitmaincopy			; if we are still waiting, branch
+		bra.w	.read_failed			; if we have waited too long, branch
 
 ; -------------------------------------------------------------------------
 ; Load a mute FMV
@@ -821,18 +886,19 @@ ReadFMVSectors:
 ; -------------------------------------------------------------------------
 
 FileFunc_LoadMuteFMV:
-		move.b	#1<<FMVF_SECT,fe_fmv(a5)		; Mark as reading data section 1
-		move.w	#FMODE_LOADFMVM,fe_opermode(a5)	; set operation mode to "load mute FMV"
-		move.l	#FMVGFXBUF,fe_readbuffer(a5)	; Prepare to read graphics data
-		move.w	#0,fe_fmv_sectframe(a5)		; reset FMV sector frame
+		move.b	#1<<fmvflag_sect,fe_fmv(a5)		; mark as reading data section 1
+		move.w	#id_FileMode_LoadMuteFMV,fe_opermode(a5)	; set operation mode to "load mute FMV"
+		move.l	#word_ram_1M,fe_readbuffer(a5)	; prepare to read graphics data
+	;	move.w	#0,fe_fmv_sectframe(a5)		; reset FMV sector frame
+		clr.w	fe_fmv_sectframe(a5)		; reset FMV sector frame
 
-		movea.l	a0,a1				; Copy file name
+		movea.l	a0,a1				; a1 = pointer to filename
 		lea	fe_filename(a5),a2
-		move.w	#FILENAMESZ-1,d1
+		move.w	#sizeof_filename-1,d1
 
-.CopyFileName:
-		move.b	(a1)+,(a2)+
-		dbf	d1,.CopyFileName
+	.loop:
+		move.b	(a1)+,(a2)+		; copy filename to variables
+		dbf	d1,.loop
 		rts
 
 ; -------------------------------------------------------------------------
@@ -840,48 +906,52 @@ FileFunc_LoadMuteFMV:
 ; -------------------------------------------------------------------------
 
 FileMode_LoadMuteFMV:
-		move.b	#3,fe_cdcmode(a5)			; set CDC device to "Sub CPU"
-		lea	fe_filename(a5),a0		; Find file
+		move.b	#cdc_dest_sub,fe_cdcmode(a5)			; set CDC device to "Sub CPU"
+		lea	fe_filename(a5),a0		; find file
 		bsr.w	FileFunc_FindFile
-		bcs.w	.FileNotFound			; if it wasn't found, branch
+		bcs.w	.not_found			; if it wasn't found, branch
 
-		move.l	fileSector(a0),fe_sector(a5)	; get file sector
-		move.l	fileLength(a0),d1		; get file size
+		move.l	file_sector(a0),fe_sector(a5)	; get file sector
+		move.l	file_length(a0),d1		; get file size
 		move.l	d1,fe_filesize(a5)
 
-		move.l	#0,fe_sectorcount(a5)		; get file size in sectors
+	;	move.l	#0,fe_sectorcount(a5)		; get file size in sectors
+		clr.l	fe_sectorcount(a5)		; get file size in sectors
 
-.GetSectors:
-		subi.l	#$800,d1
-		ble.s	.ReadFile
+	.get_sectors:
+		subi.l	#sizeof_sector,d1
+		ble.s	.read
 		addq.l	#1,fe_sectorcount(a5)
-		bra.s	.GetSectors
+		bra.s	.get_sectors
 
-.ReadFile:
+	.read:
 		bsr.w	ReadMuteFMVSectors		; read FMV file data
-		cmp.w	#FSTAT_OK,fe_status(a5)		; Was the operation a success?
-		beq.s	.Done				; if so, branch
-		move.w	#FSTAT_LOADFAIL,fe_status(a5)	; Mark as failed
+		cmp.w	#fstatus_ok,fe_status(a5)		; was the operation a success?
+		beq.s	.done				; if so, branch
+		move.w	#fstatus_loadfail,fe_status(a5)	; mark as failed
 
-.Done:
-		move.w	#FMODE_NONE,fe_opermode(a5)	; set operation mode to "none"
-		bra.w	FileOperation			; Loop back
+	.done:
+		move.w	#id_FileMode_None,fe_opermode(a5)	; set operation mode to "none"
+		bra.w	FileOperation			; loop back
+; ===========================================================================
 
-.FileNotFound:
-		move.w	#FSTAT_NOTFOUND,fe_status(a5)	; Mark as not found
-		bra.s	.Done
+.not_found:
+		move.w	#fstatus_notfound,fe_status(a5)	; mark as not found
+		bra.s	.done
 
 ; -------------------------------------------------------------------------
-; read mute FMV file data from CD
+; Read mute FMV file data from CD
 ; -------------------------------------------------------------------------
 
 ReadMuteFMVSectors:
-		move.l	(sp)+,fe_returnaddr(a5)		; save return address
-		move.w	#0,fe_sectorsread(a5)		; reset sectors read count
+		popr.l	fe_returnaddr(a5)		; save return address
+	;	move.w	#0,fe_sectorsread(a5)		; reset sectors read count
+		clr.w	fe_sectorsread(a5)		; reset sectors read count
 		move.w	#10,fe_retries(a5)		; set retry counter
 
-.StartRead:
-		move.b	fe_cdcmode(a5),GACDCDEVICE&$FFFFFF	; set CDC device
+.startread:
+	;	move.b	fe_cdcmode(a5),(mcd_cdc_mode&$FFFFFF).l	; set CDC device
+		move.b	fe_cdcmode(a5),(mcd_cdc_mode).w	; set CDC device
 
 		lea	fe_sector(a5),a0			; get sector information
 		move.l	(a0),d0				; get sector frame (in BCD)
@@ -896,86 +966,94 @@ ReadMuteFMVSectors:
 		abcd	d1,d0
 		move.b	d0,fe_sectorframe(a5)
 
-		move.w	#CDCSTOP,d0			; stop CDC
+		move.w	#DecoderStop,d0			; stop CDC
 		jsr	(_CDBIOS).w
-		move.w	#ROMREADN,d0			; start reading
+	;	move.w	#ROMReadNum,d0			; start reading
+		moveq	#ROMReadNum,d0			; start reading
 		jsr	(_CDBIOS).w
 		move.w	#600,fe_waittime(a5)		; set wait timer
 
-.Bookmark:
-		bsr.w	FileMode_SetOperMark		; set bookmark
+	.bookmark:
+		bsr.w	FileMode_SetOperMark		; set bookmark; continue at next VBlank
+; ===========================================================================
 
-.CheckReady:
-		move.w	#CDCSTAT,d0			; Check if data is ready
+.checkready:
+		move.w	#DecoderStatus,d0			; is data ready to read?
 		jsr	(_CDBIOS).w
-		bcc.s	.ReadData			; if so, branch
-		subq.w	#1,fe_waittime(a5)		; Decrement wait v_time
-		bge.s	.Bookmark			; if we are still waiting, branch
+		bcc.s	.read				; if so, branch
+		subq.w	#1,fe_waittime(a5)		; decrement wait time
+		bge.s	.bookmark			; if we are still waiting, branch
 		subq.w	#1,fe_retries(a5)		; if we waited too long, decrement retry counter
-		bge.s	.StartRead			; if we can still retry, do it
-		bra.w	.ReadFailed			; give up
+		bge.s	.startread			; if we can still retry, do it
+		bra.w	.read_failed			; give up
+; ===========================================================================
 
-.ReadData:
-		move.w	#CDCREAD,d0			; read data
+.read:
+		move.w	#DecoderRead,d0			; read data
 		jsr	(_CDBIOS).w
-		bcs.w	.ReadRetry			; if the data isn't read, branch
-		move.l	d0,fe_readtime(a5)		; get v_time of sector read
-		move.b	fe_sectorframe(a5),d0		; Does the read sector match the sector we want?
-		cmp.b	fe_readframe(a5),d0
-		beq.s	.WaitDataSet			; if so, branch
+		bcs.w	.read_retry			; if the data wasn't read, branch
+		move.l	d0,fe_readtime(a5)		; get time of sector read
+		move.b	fe_sectorframe(a5),d0
+		cmp.b	fe_readframe(a5),d0		; does the read sector match the sector we want?
+		beq.s	.wait_data_set			; if so, branch
 
-.ReadRetry:
+.read_retry:
 		addq.l	#1,fe_fmvfailcount(a5)		; increment fail counter
-		subq.w	#1,fe_retries(a5)		; Decrement retry counter
-		bge.w	.StartRead			; if we can still retry, do it
-		bra.w	.ReadFailed			; give up
+		subq.w	#1,fe_retries(a5)		; decrement retry counter
+		bge.w	.startread			; if we can still retry, do it
+		bra.w	.read_failed			; give up
+; ===========================================================================
 
-.WaitDataSet:
+.wait_data_set:
 		move.w	#$800-1,d0			; Wait for data set
 
-.WaitDataSetLoop:
-		btst	#6,GACDCDEVICE&$FFFFFF
-		dbne	d0,.WaitDataSetLoop		; Loop until ready or until it takes too long
-		bne.s	.Transfe_rData			; if the data is ready to be transfe_red, branch
+	.wait_loop:
+	;	btst	#cdc_dataready_bit,(mcd_cdc_mode&$FFFFFF).l
+		btst	#cdc_dataready_bit,(mcd_cdc_mode).w
+		dbne	d0,.wait_loop		; loop until ready or until it takes too long
+		bne.s	.transferdata			; if the data is ready to be transfered, branch
 
-		subq.w	#1,fe_retries(a5)		; Decrement retry counter
-		bge.w	.StartRead			; if we can still retry, do it
-		bra.w	.ReadFailed			; give up
+		subq.w	#1,fe_retries(a5)		; decrement retry counter
+		bge.w	.startread			; if we can still retry, do it
+		bra.w	.read_failed			; give up
+; ===========================================================================
 
-.Transfe_rData:
-		cmpi.b	#2,fe_cdcmode(a5)			; is the CDC device set to "Main CPU"
-		beq.w	.MainCPUTransfe_r		; if so, branch
+.transferdata:
+		cmpi.b	#cdc_dest_main,fe_cdcmode(a5)			; is the CDC device set to "Main CPU"?
+		beq.w	.mainCPU_transfer		; if so, branch
 
-		move.w	#CDCTRN,d0			; Transfe_r data
+		move.w	#DecoderTransfer,d0			; transfer data
 		movea.l	fe_readbuffer(a5),a0
 		lea	fe_readtime(a5),a1
 		jsr	(_CDBIOS).w
-		bcs.s	.CopyRetry			; if it wasn't successful, branch
+		bcs.s	.copy_retry			; if it wasn't successful, branch
 
-		move.b	fe_sectorframe(a5),d0		; Does the read sector match the sector we want?
+		move.b	fe_sectorframe(a5),d0		; does the read sector match the sector we want?
 		cmp.b	fe_readframe(a5),d0
-		beq.s	.IncSectorFrame			; if so, branch
+		beq.s	.incsectorframe			; if so, branch
 
-.CopyRetry:
+	.copy_retry:
 		addq.l	#1,fe_fmvfailcount(a5)		; increment fail counter
-		subq.w	#1,fe_retries(a5)		; Decrement retry counter
-		bge.w	.StartRead			; if we can still retry, do it
-		bra.w	.ReadFailed			; give up
+		subq.w	#1,fe_retries(a5)		; decrement retry counter
+		bge.w	.startread			; if we can still retry, do it
+		bra.w	.read_failed			; give up
+; ===========================================================================
 
-.IncSectorFrame:
+.incsectorframe:
 		move	#0,ccr				; Next sector frame
 		moveq	#1,d1
 		abcd	d1,d0
 		move.b	d0,fe_sectorframe(a5)
 		cmpi.b	#$75,fe_sectorframe(a5)		; should we wrap it?
-		bcs.s	.FinishSectorRead		; if not, branch
-		move.b	#0,fe_sectorframe(a5)		; if so, wrap it
+		bcs.s	.finish_sector_read		; if not, branch
+	;	move.b	#0,fe_sectorframe(a5)		; if so, wrap it
+		clr.b	fe_sectorframe(a5)		; if so, wrap it
 
-.FinishSectorRead:
-		move.w	#CDCACK,d0			; Finish data read
+	.finish_sector_read:
+		move.w	#DecoderAck,d0			; Finish data read
 		jsr	(_CDBIOS).w
 
-		move.w	#6,fe_waittime(a5)		; set new wait v_time
+		move.w	#6,fe_waittime(a5)		; set new wait time
 		move.w	#10,fe_retries(a5)		; set new retry counter
 		addq.w	#1,fe_sectorsread(a5)		; increment sectors read counter
 		addq.l	#1,fe_sector(a5)			; Next sector
@@ -983,58 +1061,56 @@ ReadMuteFMVSectors:
 
 		move.w	fe_fmv_sectframe(a5),d0		; get current sector frame
 		cmpi.w	#5,d0				; Are we done loading graphics data?
-		beq.s	.GfxDone			; if so, branch
+		beq.s	.gfx_done			; if so, branch
 		addi.l	#$800,fe_readbuffer(a5)		; Advance read buffer
-		bra.w	.Advance
+		bra.w	.advance
+; ===========================================================================
 
-.GfxDone:
-		bset	#0,mcd_sub_flag.w			; sync with Main CPU
+.gfx_done:
+		bset	#0,(mcd_sub_flag).w			; sync with main CPU
 
-.WaitMain:
-		btst	#0,mcd_main_flag.w			; Wait for Main CPU
-		beq.s	.WaitMain
-		btst	#0,mcd_main_flag.w
-		beq.s	.WaitMain
-		bclr	#0,mcd_sub_flag.w
+	.waitmainCPU:
+		btst	#0,(mcd_main_flag).w			; wait for main CPU
+		beq.s	.waitmainCPU
+		btst	#0,(mcd_main_flag).w
+		beq.s	.waitmainCPU
+		bclr	#0,(mcd_sub_flag).w
 
-		bchg	#0,mcd_mem_mode.w			; swap Word RAM banks
+		bchg	#bank_assignment_bit,(mcd_mem_mode).w			; swap word RAM banks
 
-.WaitWordRAM:
-		btst	#1,mcd_mem_mode.w
-		bne.s	.WaitWordRAM
+	.waitwordRAM:
+		btst	#bank_swap_request_bit,(mcd_mem_mode).w
+		bne.s	.waitwordRAM
 
-		move.l	#FMVGFXBUF,fe_readbuffer(a5)	; set read buffer for graphics data
-		move.w	#0,fe_fmv_sectframe(a5)		; reset FMV sector frame
+		move.l	#word_ram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
+	;	move.w	#0,fe_fmv_sectframe(a5)		; reset FMV sector frame
+		clr.w	fe_fmv_sectframe(a5)		; reset FMV sector frame
 
-.Advance:
-		subq.l	#1,fe_sectorcount(a5)		; Decrement sectors to read
-		bgt.w	.CheckReady			; if there are still sectors to read, branch
-		move.w	#FSTAT_OK,fe_status(a5)		; Mark as successful
+.advance:
+		subq.l	#1,fe_sectorcount(a5)		; decrement sectors to read
+		bgt.w	.checkready			; if there are still sectors to read, branch
+		move.w	#fstatus_ok,fe_status(a5)		; mark as successful
 
-.Done:
-		move.b	fe_cdcmode(a5),GACDCDEVICE&$FFFFFF	; set CDC device
+.done:
+	;	move.b	fe_cdcmode(a5),(mcd_cdc_mode&$FFFFFF).l	; set CDC device
+		move.b	fe_cdcmode(a5),(mcd_cdc_mode).w	; set CDC device
 		movea.l	fe_returnaddr(a5),a0		; go to saved return address
 		jmp	(a0)
+; ===========================================================================
 
-.ReadFailed:
-		move.w	#FSTAT_FMVFAIL,fe_status(a5)	; Mark as failed
+.read_failed:
+		move.w	#fstatus_fmvfail,fe_status(a5)	; mark as failed
 		bra.s	.Done
+; ===========================================================================
 
-.MainCPUTransfe_r:
+.mainCPU_transfer:
 		move.w	#6,fe_waittime(a5)		; set new wait v_time
 
-.WaitMainCopy:
+	.waitmaincopy:
 		bsr.w	FileMode_SetOperMark		; set bookmark
-		btst	#7,GACDCDEVICE&$FFFFFF		; Has the data been transfe_rred?
-		bne.w	.FinishSectorRead		; if so, branch
-		subq.w	#1,fe_waittime(a5)		; Decrement wait v_time
-		bge.s	.WaitMainCopy			; if we are still waiting, branch
-		bra.s	.ReadFailed			; if we have waited too long, branch
-
-; -------------------------------------------------------------------------
-; reset file engine
-; -------------------------------------------------------------------------
-
-FileFunc_EngineReset:
-		bsr.w	FileFunc_EngineInit
-		rts
+	;	btst	#cdc_endtrans_bit,(mcd_cdc_mode&$FFFFFF).l	; has the data been transferred?
+		btst	#cdc_endtrans_bit,(mcd_cdc_mode).w		; has the data been transferred?
+		bne.w	.finish_sector_read		; if so, branch
+		subq.w	#1,fe_waittime(a5)		; decrement wait v_time
+		bge.s	.waitmaincopy			; if we are still waiting, branch
+		bra.w	.read_failed			; if we have waited too long, branch

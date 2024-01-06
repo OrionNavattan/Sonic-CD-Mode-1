@@ -8,28 +8,20 @@
 		opt ae-					; automatic evens are disabled by default
 		opt ws+					; allow statements to contain white-spaces
 		opt w+					; print warnings
-		opt m+					; do not expand macros - if enabled, this can break assembling
+		opt op+					; optimize to PC relative if possible
+		opt os+					; optimize backwards branches to .s if possible
+		opt ow+					; optimize to absolute short if possible
+		opt oz+					; optimize address register indirect with displacement to plain address register indirect if displacement = 0
+		opt	oaq+				; optimize addi and adda to addq if possible
+		opt osq+				; optimize subi and suba to subq if possible
 
-		include "Debugger Macros and Common Defs.asm"
+		include "AXM68K 68k Only.asm"
 		include "Mega CD Sub CPU.asm"
+		include "Includes/Debugger Macros and Common Defs.asm"
 		include "Common Macros.asm"
+		include "Constants (Sub CPU).asm"
+		include "RAM Addresses (Sub CPU).asm"
 
-
-		org	sp_start
-
-SubPrgHeader:	index.l *
-		dc.b	'MAIN       ',0				; module name (always MAIN), flag (always 0)
-		dc.w	0,0							; version, type
-		dc.l	0							; pointer to next module
-		dc.l	0			; size of program
-		ptr		UserCallTable	; pointer to usercall table
-		dc.l	0							; workram size
-
-UserCallTable:	index *
-		ptr	Init		; Call 0; initialization
-		ptr	Main		; Call 1; main
-		ptr	VBlank		; Call 2; user VBlank
-		dc.w	0		; Call 3; unused
 
 		org	sp_start
 
@@ -57,7 +49,7 @@ Init:
 		lea (_AddressError).w,a1	; first error vector in jump table
 		moveq	#10-1,d0			; 9 vectors + GFX int
 
-		.vectorloop:
+	.vectorloop:
 		addq.l	#2,a1		; skip over instruction word
 		move.l	(a0)+,(a1)+	; set table entry to point to exception entry point
 		dbf d0,.vectorloop	; repeat for all vectors and GFX int
@@ -66,7 +58,7 @@ Init:
 		move.b	(a0)+,(mcd_timer_interrupt).w	; set timer interrupt interval
 
 		tst.b	(mcd_maincom_0).w
-		bne.s	.nodisc				; branch if disc detection has been disabled by the user
+		bne.w	.nodisc				; branch if disc detection has been disabled by the user
 
 		moveq	#DriveInit,d0
 		jsr	(_CDBIOS).w				; initialize the drive and get TOC
@@ -77,46 +69,114 @@ Init:
 		btst	#drive_ready_bit,(a0)				; a0 = _BIOSStatus
 		bne.s	.waitinit			; branch if drive init hasn't finished
 
-		;moveq	#30,d7			; number of attempts to read header
-	.readheader:
+
 		btst	#no_disc_bit,(a0)
-		bne.s	.nodisc				; branch if there is no disc in the drive
+		bne.w	.nodisc				; branch if there is no disc in the drive
+
+.readheader:
+		lea FileVars(pc),a5	; we use the file engine code to get the header sector
+		move.b	#cdc_dest_sub,(mcd_cdc_mode).w				; set CDC device to sub CPU
+		clr.l	fe_sector(a5)
+		move.l	#1,fe_sectorcount(a5)
+		move.l	#FileVars+fe_dirreadbuf,fe_readbuffer(a5)
+		move.w	#30,fe_retries(a5)		; set retry counter
+
+.startread:
+		lea	fe_sector(a5),a0			; get sector information
+		move.l	(a0),d0				; get sector frame (in BCD)
+		divu.w	#75,d0
+		swap	d0
+		ext.l	d0
+		divu.w	#10,d0
+		move.b	d0,d1
+		lsl.b	#4,d1
+		swap	d0
+		move	#0,ccr
+		abcd	d1,d0
+		move.b	d0,fe_sectorframe(a5)
 
 		move.w	#DecoderStop,d0
 		jsr	(_CDBIOS).w				; stop CDC
-
-		lea FirstSectorData(pc),a0
 		moveq	#ROMReadNum,d0
 		jsr	(_CDBIOS).w				; read first sector of disc
 
-	.waitstatus:
+;		7,500,000 cycles per second
+; 		wait up to 10 seconds
+
+.waitstatus:
+		moveq	#$72-1,d0	; outer loop
+
+	.waitinner:
+		moveq_	$FF,d1		; inner loop
+	.waitloopinner:
+		dbf	d1,.waitloopinner
+		dbf d0,.waitinner
+
 		move.w	#DecoderStatus,d0
 		jsr	(_CDBIOS).w				; is sector read done?
-		bcs.s	.waitstatus		; branch if not
+		bcc.s	.waitread		; branch if so
+		subq.w	#1,fe_waittime(a5)
+		bge.s	.waitstatus			; if we are still waiting, branch
+		subq.w	#1,fe_retries(a5)		; if we waited too long, decrement retry counter
+		bge.s	.startread			; if we can still retry, do it
+		bra.w	.nodisc
+; ===========================================================================
 
-	.waitread:
+.waitread:
 		move.w	#DecoderRead,d0
 		jsr	(_CDBIOS).w				; prepare to read data
-		bcc.s	.waitread		; branch if not ready
+		bcs.s	.waitread		; branch if not ready
+		move.l	d0,fe_readtime(a5)		; get time of sector read
+		move.b	fe_sectorframe(a5),d0
+		cmp.b	fe_readframe(a5),d0		; does the read sector match the sector we want?
+		beq.s	.wait_data_set			; if so, branch
 
-		lea	FirstSectorHeader(pc),a1	; sector header
-		move.l	d0,(a1)			; set header buffer in RAM for transfer call
-		lea SectorBuffer(pc),a0		; destination buffer
-		move.w	#DecoderTransfer,d0
-		jsr	(_CDBIOS).w				; transfer to RAM buffer
-		bcs.w	TransferFailure		; branch if it failed
+	.read_retry:
+		subq.w	#1,fe_retries(a5)		; decrement retry counter
+		bge.s	.startread			; if we can still retry, do it
+		bra.s	.nodisc			; give up
+; ===========================================================================
 
+.wait_data_set:
+		move.w	#$800-1,d0			; wait for data set
+
+	.wait_loop:
+		btst	#cdc_dataready_bit,(mcd_cdc_mode).w
+		dbne	d0,.wait_loop		; loop until ready or until it takes too long
+		bne.s	.transferdata			; if the data is ready to be transfered, branch
+
+		subq.w	#1,fe_retries(a5)		; decrement retry counter
+		bge.w	.startread			; if we can still retry, do it
+		bra.s	.nodisc			; give up
+; ===========================================================================
+
+.transferdata:
+		move.w	#DecoderTransfer,d0			; transfer data
+		movea.l	fe_readbuffer(a5),a0
+		lea	fe_readtime(a5),a1
+		jsr	(_CDBIOS).w
+		bcs.s	.copy_retry		; if it wasn't successful, branch
+
+		move.b	fe_sectorframe(a5),d0		; does the read sector match the sector we want?
+		cmp.b	fe_readframe(a5),d0
+		beq.s	.checkheader			; if so, branch
+
+	.copy_retry:
+		subq.w	#1,fe_retries(a5)		; decrement retry counter
+		bge.w	.startread			; if we can still retry, do it
+		bra.s	.nodisc			; give up
+; ===========================================================================
+
+.checkheader:
 		move.w	#DecoderAck,d0
 		jsr	(_CDBIOS).w			; acknowledge transfer
 
-		lea SectorBuffer+DiscName(pc),a0	; name of disc in header
-		lea HeaderTitle(pc),a1
-		moveq	#sizeof_HeaderTitle,d0
+		movea.l fe_readbuffer(a5),a1	; name of disc in header
+		lea HeaderTitle(pc),a2		; header title we're checking for
+		moveq	#sizeof_HeaderTitle,d1
 
-	.checkloop:
-		cmpm.b	(a0)+,(a1)+	; check header characters
-		dbne	d0,.checkloop	; exit if they don't match. loop if they do
-		beq.s	.fulldisc	; branch if comparison was successful
+		bsr.w	CompareStrings	; does the title in the header match?
+		beq.s	.fulldisc		; if so, branch
 
 		cmpi.b	#17,(_CDDStatus+CDD_LastTrack).w		; does this disc have at least 17 tracks?
 		bcc.s	.audiocd			; if so, we can play music from this CD
@@ -163,15 +223,15 @@ HeaderTitle:
 
 Main:
 		addq.w #4,sp	; throw away return address to BIOS call loop, as we will not be returning there
-		moveq	#FileFunction_GetFiles,d0
+		moveq	#id_FileFunc_GetFiles,d0
 		bsr.w	FileFunction		; initialize the filesystem
 
 	.waitfiles:
 		jsr	(_WaitForVBlank).w			; file engine only runs during VBlank
 
-		move.w	#id_FileFunction_Status,d0		; is the operation finished?
+		moveq	#id_FileFunc_GetStatus,d0		; is the operation finished?
 		bsr.w	FileFunction
-		bcs.s	.wait				; If not, wait
+		bcs.s	.waitfiles				; if not, wait
 
 		moveq	#'R',d0
 
@@ -208,13 +268,26 @@ VBlank:
 		beq.s	.nop						; branch if not
 
 		movem.l	d0-a6,-(sp)			; save registers
-		move.w	#FFUNC_OPER,d0			; perform engine operation
+		move.w	#id_FileFunc_Operation,d0			; perform engine operation
 		bsr.w	FileFunction
 		movem.l	(sp)+,d0-a6			; restore registers
 
 	.nop:
 		rts
 
-		include "includes/Sub/File Engine.asm"
+		include "Includes/Sub/File Engine.asm"
 
+FileVars:
 		ds.b	sizeof_FileVars
+		even
+DriverInit:
+		rts
+
+RunPCMDriver:
+		rte
+
+FileTable:
+
+fmv_pcm_buffer:
+		even
+		include "Includes/Sub/Mega CD Exception Handler (Sub CPU).asm"

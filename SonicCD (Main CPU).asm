@@ -29,23 +29,23 @@ FixBugs = 0		; Leave at 0 to preserve a handful of bugs and oddities in the orig
 
 
 		include "Mega CD Main CPU (Mode 1).asm"		; Mega CD Mode 1 main CPU hardware addresses and function macros
-		include "Debugger Macros and Common Defs.asm"	; error handler definitions common to both CPUs
+		include "includes/Debugger Macros and Common Defs.asm"	; error handler definitions common to both CPUs
 		include "Common Macros.asm"					; macros common to both main and sub CPU programs
 		include "Macros (Main CPU).asm"
-		include "SpritePiece.asm"					; Sprite mapping macros
-		include "File List.asm"
-		include "Main CPU Constants.asm"
-		include "Main CPU RAM Addresses.asm"
-		include "VRAM Addresses.asm"
+	;	include "SpritePiece.asm"					; Sprite mapping macros
+	;	include "File List.asm"
+	;	include "Constants (Main CPU).asm"
+		include "RAM Addresses (Main CPU).asm"
+	;	include "VRAM Addresses.asm"
 
-		include "sound/Main CPU Sound Equates.asm"
-		include "sound/Main CPU Frequency, Note, Envelope, & Sample Definitions.asm" ; definitions used in both the Z80 sound driver and SMPS2ASM
-		include "sound/Sound Language.asm" ; SMPS2ASM macros and conversion functionality
-		include "sound/FM and PSG Sounds.asm"
-		include "sound/PCM Sounds.asm"
+	;	include "sound/Main CPU Sound Equates.asm"
+	;	include "sound/Main CPU Frequency, Note, Envelope, & Sample Definitions.asm" ; definitions used in both the Z80 sound driver and SMPS2ASM
+	;	include "sound/Sound Language.asm" ; SMPS2ASM macros and conversion functionality
+	;	include "sound/FM and PSG Sounds.asm"
+	;	include "sound/PCM Sounds.asm"
 
 ROM_Start:
-	if * <> 0
+	if offset(*) <> 0
 		inform 3,"ROM_Start was $%h but it should be 0.",ROM_Start
 	endc
 
@@ -82,26 +82,26 @@ Vectors:
 
 
 Header:
-	if region=japan
-		dc.b	"SEGA DISC SYSTEM"	; Hardware ID
-		dc.b	"(C)SEGA 1993.AUG"	; Release date
-	elseif region=usa
+;	if region=japan
+;		dc.b	"SEGA DISC SYSTEM"	; Hardware ID
+;		dc.b	"(C)SEGA 1993.AUG"	; Release date
+;	elseif region=usa
 		dc.b	"SEGA DISC SYSTEM"	; Hardware ID
 		dc.b	"(C)SEGA 1993.OCT"	; Release date
-	else
-		dc.b	"SEGA DISC SYSTEM"	; Hardware ID
-		dc.b	"(C)SEGA 1993.AUG"	; Release date
-	endif
+;	else
+;		dc.b	"SEGA DISC SYSTEM"	; Hardware ID
+;		dc.b	"(C)SEGA 1993.AUG"	; Release date
+;	endc
 		dc.b 'SONIC THE HEDGEHOG-CD                           ' ; Domestic name
 		dc.b 'SONIC THE HEDGEHOG-CD                           ' ; International name
 
-	if region=japan				; Game version
-		dc.b	"GM G-6021  -00  "
-	elseif region=usa
+;	if region=japan				; Game version
+;		dc.b	"GM G-6021  -00  "
+;	elseif region=usa
 		dc.b	"GM MK-4407 -00  "
-	else
-		dc.b	"GM MK-4407-00   "
-    endc
+;	else
+;		dc.b	"GM MK-4407-00   "
+;    endc
 Checksum:
 		dc.w $0000			; Checksum
 		dc.b 'JC              ' ; I/O Support : joypad and CD-ROM
@@ -140,8 +140,8 @@ MainLoop:		; At this point, both CPUs are ready. Continue with your main program
 
 ; ===========================================================================
 
-		include "KosM to PrgRAM.asm"
-		include "Kosinski Decompression.asm"
+		include "includes/main/KosM to PrgRAM.asm"
+		include "includes/main/Kosinski Decompression.asm"
 ; ===========================================================================
 
 gmptr:		macro
@@ -175,7 +175,7 @@ GameModeArray:
 ; ===========================================================================
 
 SubCPU_Program:
-		incbin "Sub CPU Program.kosm"
+		incbin	"SonicCD (Sub CPU).kosm"
 		even
 ; ===========================================================================
 

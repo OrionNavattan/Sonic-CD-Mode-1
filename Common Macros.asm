@@ -201,3 +201,70 @@ vdp_comm:	macro inst,addr,cmdtarget,cmd,dest,adjustment
 
 arraysize:	macros
 		sizeof_\1: equ	*-\1
+
+; ---------------------------------------------------------------------------
+; Clear an area of RAM.
+; input: addressing mode to use when loading start location, start location
+; (MUST be even address), end location (may be defined with rsblock)
+; ---------------------------------------------------------------------------
+
+clear_ram:	macro startaddr,size
+
+		if \size=0
+			inform 1,"clearRAM is clearing zero bytes. Turning this into a nop instead."
+			nop
+			mexit
+  		endc
+
+  		if stricmp ("\0","w")
+  			lea	(\startaddr).w,a1
+  		elseif stricmp ("\0","l")
+  			lea	(\startaddr).l,a1
+  		elseif stricmp ("\0","pc")
+  			lea	\startaddr(pc),a1
+  		else
+  			inform 3,"Invalid addressing mode for clear_ram macro."
+  		endc
+
+
+  		if def(\startaddr)	; if not forward reference
+ 			if (\startaddr&1)	; if start address is odd
+				move.b	d0,(a1)+	; clear the first byte if start address is odd
+			endc
+	    	if (((\size)-(\startaddr&1))/4-1)<$80	; if moveq can be used
+				moveq	#((\size)-(\startaddr&1))/4-1,d1	; minus 1 if start address is odd
+			else
+				move.w	#((\size)-(\startaddr&1))/4-1,d1	; minus 1 if start address is odd
+			endc
+
+		.loop\@:
+			move.l	d0,(a1)+
+			dbf	d1,.loop\@
+
+			if ((\size-((startaddr)&1))&2)
+				move.w	d0,(a1)+			; if amount to clear is not divisible by longword, clear the last whole word
+    		endc
+    		if ((\size-((startaddr)&1))&1)
+				move.b	d0,(a1)+			; if amount to clear is not divisible by word, clear the last byte
+    		endc
+
+	    else
+	    	inform 1,"WARNING: could not determine if start address for clear_ram was odd due to forward reference. Make sure start address is even."
+	    	if ((\size/4)-1)<$80	; if moveq can be used
+				moveq	#(\size/4)-1,d1
+			else
+				move.w	#(\size/4)-1,d1
+			endc
+
+		.loop\@:
+			move.l	d0,(a1)+
+			dbf	d1,.loop\@
+
+			if (\size&2)
+				move.w	d0,(a1)+			; if amount to clear is not divisible by longword, clear the last whole word
+    		endc
+    		if (\size&1)
+				move.b	d0,(a1)+			; if amount to clear is not divisible by word, clear the last byte
+    		endc
+	    endc
+	    endm

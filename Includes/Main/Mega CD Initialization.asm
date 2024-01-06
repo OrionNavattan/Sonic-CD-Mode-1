@@ -272,7 +272,7 @@ SetupValues:
 
 		dc.b	$9F,$BF,$DF,$FF				; PSG mute values (PSG 1 to 4)
 
-MCDBIOSList:	index *,1
+MCDBIOSList:	index offset(*),1
 		ptr	MCDBIOS_JP1			; 1
 		ptr	MCDBIOS_US1			; 2
 		ptr	MCDBIOS_EU1			; 3

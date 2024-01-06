@@ -39,3 +39,8 @@ luac.out
 *.x86_64
 *.hex
 
+errors1.txt
+errors2.txt
+SonicCD (Sub CPU).sym
+SonicCD (Sub CPU).kosm
+SonicCD (Sub CPU).bin

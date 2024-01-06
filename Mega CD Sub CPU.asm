@@ -14,8 +14,8 @@ word_ram:			equ $80000 ; Mega CD Word RAM
 word_ram_2M:		equ	word_ram	; MCD Word RAM start (2M)
 word_ram_2M_end:	equ	$C0000	; MCD Word RAM end (2M)
 
-;word_ram_1M:		equ	$C0000	; MCD Word RAM start (1M/1M)
-;word_ram_1M_end:	equ	$E0000	; MCD Word RAM end (1M/1M)
+word_ram_1M:		equ	$C0000	; MCD Word RAM start (1M/1M)
+word_ram_1M_end:	equ	$E0000	; MCD Word RAM end (1M/1M)
 
 ; Backup RAM
 backup_ram:			equ	$FE0000	; Mega CD backup RAM (only odd bytes accessible)
@@ -51,23 +51,25 @@ mcd_mem_mode:		equ $FFFF8003 ; word ram mode/swap and priority mode registers; f
 
 	program_ram_bank:			equ $C0	; bits 6 and 7
 
-mcd_cdd_mode:		equ $FFFF8004	; CD data decoder mode and destination select register
-	cdd_destination:		equ 7	; bits 0-2, destination of CD data read
-		cdd_dest_main:		equ	2	; main CPU read from its instance of mcd_cdc_data
-		cdd_dest_sub:		equ 3	; sub CPU read from mcd_cdc_data
-		cdd_dest_pcm:		equ 4	; DMA to PCM waveram
-		cdd_dest_prgram:		equ 5	; DMA to program RAM
-		cdd_dest_wordram:	equ 7	; DMA to word RAM
+mcd_cdc_mode:		equ $FFFF8004	; CD data decoder mode and destination select register
+	cdc_destination:		equ 7	; bits 0-2, destination of CD data read
+		cdc_dest_main:			equ	2	; main CPU read from its instance of mcd_cdc_data
+		cdc_dest_sub:			equ 3	; sub CPU read from mcd_cdc_data
+		cdc_dest_pcm:			equ 4	; DMA to PCM waveram
+		cdc_dest_prgram:		equ 5	; DMA to program RAM
+		cdc_dest_wordram:		equ 7	; DMA to word RAM
+	cdc_dataready_bit:		equ 6	; indicates data is ready to be read from mcd_cdc_data_port
+	cdc_endtrans_bit:		equ 7	; indicates all data has been transferred
 
-	hibyte_ready_bit:	equ 5	; set when upper byte is sent from CD controller; cleared once full word is ready
-	data_ready_bit:		equ 6	; set once full word of data is ready
-	data_end_bit:		equ 7	; set once the data read is finished
+	;hibyte_ready_bit:	equ 5	; set when upper byte is sent from CD controller; cleared once full word is ready
+	;data_ready_bit:		equ 6	; set once full word of data is ready
+	;data_end_bit:		equ 7	; set once the data read is finished
 
 mcd_cdc_rs0:		equ	$FFFF8005 ; CD data decoder control registers; BIOS use only
 					; 	$FFFF0006 unused
 mcd_cdc_rs1:		equ	$FFFF8007 ; CD data decoder control registers; BIOS use only
 
-mcd_cdc_data:		equ	$FFFF8008 ; CD data out for sub CPU read
+mcd_cdc_data_port:		equ	$FFFF8008 ; CD data out for sub CPU read
 mcd_cdc_dma_dest:	equ	$FFFF800A ; CDC DMA destination address
 	; bits 0-9 used for PCM waveram
 	; bits 0-$D used for word RAM
@@ -251,7 +253,7 @@ _CDDStatus:			equ	$5E84 	; $20 bytes, contains information on the CD drive, the 
 	CDD_Status_Code:	equ 0
 	CDD_Report_Code:	equ 1
 	CDD_Disc_Control:	equ 2
-	CDD_CurrenTrack:	equ 3 ; current CDDA track
+	CDD_CurrentTrack:	equ 3 ; current CDDA track
 	CDD_Abs_Time:		equ 4 ; 4 bytes, absolute time of disc in BCD
 	CDD_Rel_Time:		equ 8 ; 4 bytes, relative time of disc in BCD
 	CDD_FirstTrack:		equ $C	; first CDDA track number
@@ -383,15 +385,13 @@ FaderChg:			equ	$86 ; FDRGHG; change CD audio volume at a specified speed
 DriveOpen:	equ	$A	; DRVOPEN; open the disc tray if an MCD Model 1 or Pioneer LaserActive (Mega LD), otherwise wait for user to open drive door
 DriveInit:	equ	$10	; DRVINIT; close the disc tray if an MCD Model 1 or Pioneer LaserActive, and check for disc; if found, get TOC data and optionally start playing music automatically
 
-; CD data read commands
+; CD data read/decoder commands
 ROMPauseOn:		equ	8	; ROMPAUSEON; pause a CD data read
 ROMPauseOff:	equ	9	; ROMPAUSEOFF; resume CD data read
 ROMRead:		equ	$17 ; ROMREAD; begin CD data read from a specific logical sector
 ROMSeek:		equ	$18	; ROMSEEK; stop CD data read at a specific logical sector
 ROMReadNum:		equ	$20 ; ROMREADN; begin CD data read at a specific logical sector and read a specific number of sectors
 ROMReadBetween:	equ	$21	; ROMREADE; perform CD data read between two designated logical sectors
-
-; CD data decoder commands
 DecoderStart:		equ	$87	; CDCSTART: begin data readout from current logical sector
 DecoderStartP:		equ	$88 ; CDCSTARTP
 DecoderStop:		equ	$89	; CDCSTOP; terminate read and discard current sector

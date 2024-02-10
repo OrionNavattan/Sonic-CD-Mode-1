@@ -208,6 +208,8 @@ arraysize:	macros
 ; (MUST be even address), end location (may be defined with rsblock)
 ; ---------------------------------------------------------------------------
 
+WarnForward:	equ 1
+
 clear_ram:	macro startaddr,size
 
 		if \size=0
@@ -249,7 +251,9 @@ clear_ram:	macro startaddr,size
     		endc
 
 	    else
-	    	inform 1,"WARNING: could not determine if start address for clear_ram was odd due to forward reference. Make sure start address is even."
+	    	if WarnForward=1
+	    		inform 1,"Could not determine if start address for clear_ram was odd due to forward reference. Make sure start address is even."
+	    	endc
 	    	if ((\size/4)-1)<$80	; if moveq can be used
 				moveq	#(\size/4)-1,d1
 			else

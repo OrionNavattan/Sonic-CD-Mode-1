@@ -100,9 +100,6 @@ Init:
 		moveq	#ROMReadNum,d0
 		jsr	(_CDBIOS).w				; read first sector of disc
 
-;		7,500,000 cycles per second
-; 		wait up to 10 seconds
-
 .waitstatus:
 		moveq	#$72-1,d0	; outer loop
 
@@ -210,12 +207,6 @@ SetupValues:
 		; ga_cdc_device value
 		dc.b 1,	$FF			; drive init parameters
 
-FirstSectorData:
-		dc.l 0,1		; sector 0, one sector (to get SEGA CD disc header)
-
-FirstSectorHeader:
-		dc.l 0		; buffer used for sector header during init
-
 HeaderTitle:
 		dc.b "SONIC CD M1 DATA DISC"
 		arraysize	HeaderTitle
@@ -239,7 +230,7 @@ Main:
 
 	.waitmainCPU:
 		cmp.b	(mcd_maincom_0).w,d0	; is main CPU ready?
-		bne.s	.waitmainCPU
+		bne.s	.waitmainCPU			; if not, wait
 
 		clr.b	(mcd_subcom_0).w
 
@@ -265,14 +256,14 @@ VBlank:
 		; exit if nothing to so
 
 		tst.b	(FileVars+fe_opermode).l	; do we need to run a file operation?
-		beq.s	.nop						; branch if not
+		beq.s	.vblank_done						; branch if not
 
 		movem.l	d0-a6,-(sp)			; save registers
-		move.w	#id_FileFunc_Operation,d0			; perform engine operation
+		moveq	#id_FileFunc_Operation,d0			; perform engine operation
 		bsr.w	FileFunction
 		movem.l	(sp)+,d0-a6			; restore registers
 
-	.nop:
+	.vblank_done:
 		rts
 
 		include "Includes/Sub/File Engine.asm"
@@ -280,6 +271,7 @@ VBlank:
 FileVars:
 		ds.b	sizeof_FileVars
 		even
+
 DriverInit:
 		rts
 

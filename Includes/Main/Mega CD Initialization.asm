@@ -1,7 +1,11 @@
 EntryPoint:
 		lea	SetupValues(pc),a0			; load setup array
-		move.w	(a0)+,sr				; ensure interrupts are disabled (e.g., if falling through from an error reset a la S&K)
+		move.w	(a0)+,sr				; ensure interrupts are disabled (e.g., if falling through from an error reset a la S3K)
 		moveq	#0,d4					; DMA fill/memory clear/Z80 stop bit test value
+		move.l	d4,d1					; clear d1, d2, d3, and d6 (d0, d5, and d7 are used with longwords or moveq first thing, so skip them)
+		move.l	d4,d2
+		move.l	d4,d3
+		move.l	d4,d6
 		movea.l d4,a4
 		move.l	a4,usp					; clear user stack pointer
 		movem.l (a0)+,a1-a6				; Z80 RAM start, work RAM start, MCD memory mode register, CD BIOS name in bootrom header, VDP data port, VDP control port
@@ -13,13 +17,14 @@ EntryPoint:
 		move.b	d6,d3					; copy to d3 for checking revision (d6 will be used later to set region and speed)
 		andi.b	#console_revision,d3			; get only hardware version ID
 		beq.s	.wait_dma				; if Model 1 VA4 or earlier (ID = 0), branch
+   		move.l	d4,d3					; clear d3 so it can be used for init error index if necessary (unnecessary if no TMSS, as the above andi will have cleared the register)
 		move.l	d7,tmss_sega-mcd_mem_mode(a3)	; satisfy the TMSS
 
-   .wait_dma:
+	.wait_dma:
 		move.w	(a6),ccr				; copy status register to CCR, clearing the VDP write latch and setting the overflow flag if a DMA is in progress
 		bvs.s	.wait_dma				; if a DMA was in progress during a soft reset, wait until it is finished
 
-   .loop_vdp:
+	.loop_vdp:
 		move.w	d2,(a6)					; set VDP register
 		add.w	d1,d2					; advance register ID
 		move.b	(a0)+,d2				; load next register value
@@ -29,7 +34,7 @@ EntryPoint:
 		move.w	d4,(a5)					; set DMA fill value (0000), clearing the VRAM
 
 		move.w	(a0)+,d5				; (sizeof_workram/4)-1
-   .loop_ram:
+	.loop_ram:
 		move.l	d4,(a2)+				; clear 4 bytes of workram
 		dbf	d5,.loop_ram				; repeat until entire workram has been cleared
 
@@ -40,56 +45,55 @@ EntryPoint:
 
 		move.l	(a0)+,(a6)				; set VDP to VSRAM write
 		moveq	#(sizeof_vsram/4)-1,d5			; loop counter
-   .loop_vsram:
+	.loop_vsram:
 		move.l	d4,(a5)					; clear 4 bytes of VSRAM
 		dbf	d5,.loop_vsram				; repeat until entire VSRAM has been cleared
 
 		move.l	(a0)+,(a6)				; set VDP to CRAM write
 		moveq	#(sizeof_pal_all/4)-1,d5		; loop counter
-   .loop_cram:
+	.loop_cram:
 		move.l	d4,(a5)					; clear two palette entries
 		dbf	d5,.loop_cram				; repeat until entire CRAM has been cleared
 
 		move.w	(a0)+,d5				; sizeof_z80_ram-1
-   .clear_Z80_ram:
+	.clear_Z80_ram:
 		move.b 	d4,(a1)+				; clear one byte of Z80 RAM
 		dbf	d5,.clear_Z80_ram			; repeat until entire Z80 RAM has been cleared
 
 		moveq	#4-1,d5					; set number of PSG channels to mute
-   .psg_loop:
+	.psg_loop:
 		move.b	(a0)+,psg_input-vdp_data_port(a5)	; set the PSG channel volume to null (no sound)
 		dbf	d5,.psg_loop				; repeat for all channels
 
-		btst	#console_mcd_bit,d6	; is there anything in the expansion slot?
-		bne.w	InitFailure1		; branch if not
-
 	;.find_bios:
+		btst	#console_mcd_bit,d6	; is there anything in the expansion slot?
+		bne.w	InitFailure1		; if not, branch
 		cmp.l	cd_bios_signature-cd_bios_name(a4),d7	; is the "SEGA" signature present?
 		bne.w	InitFailure1					; if not, branch
 		cmpi.w	#"BR",cd_bios_sw_type-cd_bios_name(a4)		; is the "Boot ROM" software type present?
 		bne.w	InitFailure1					; if not, branch
 
 		; Determine which MEGA CD device is attached.
-		movea.l	a0,a1				; a1 & a2 = pointers to BIOS data
-		movea.l a0,a2
+		movea.l	a0,a2				; a2 = index table of BIOS data
+		addq.w	#4,a0
+		movea.l a0,a1				; a1 = base address of index + 4 (to skip over payload address)
 		moveq	#(sizeof_MCDBIOSList/2)-1,d0
 		moveq	#id_MCDBIOS_JP1,d7		; first BIOS ID
 
 	.findloop:
 		adda.w	(a2)+,a1			; a1 = pointer to BIOS data
-		addq.w	#4,a1					; skip over BIOS payload address
-		;lea	cd_bios_name-cd_bios(a4),a6			; get BIOS name
-		movea.l	a4,a6				; get BIOS name
+		movea.l	a4,a5				; a6 = BIOS name in bootrom
 
 	.checkname:
 		move.b	(a1)+,d1			; get character
 		beq.s	.namematch			; branch if we've reached the end of the name
-		cmp.b	(a6)+,d1			; does the BIOS name match so far?
+		cmp.b	(a5)+,d1			; does the BIOS name match so far?
 		bne.s	.nextBIOS			; if not, go check the next BIOS
 		bra.s	.checkname			; loop until name is fully checked
+; ===========================================================================
 
 	.namematch:
-		move.b	(a1)+,d1			; is this Sub CPU BIOS address region specific?
+		move.b	(a1)+,d1			; is this BIOS region specific?
 		beq.s	.found				; branch if not
 		cmp.b	cd_bios_region-cd_bios_name(a4),d1			; does the BIOS region match?
 		beq.s	.found				; branch if so
@@ -99,8 +103,9 @@ EntryPoint:
 		movea.l	a0,a1				; reset a1
 		dbf	d0,.findloop			; loop until all BIOSes are checked
 
-	.notfound:
+	;.notfound:
 		bra.w	InitFailure2
+; ===========================================================================
 
 .found:
 		move.b	d7,(v_bios_id).w				; save BIOS ID
@@ -127,7 +132,7 @@ EntryPoint:
 		bset	#sub_bus_request_bit,mcd_reset-mcd_mem_mode(a3)			; request the sub CPU bus
 		dbne	d2,.req_bus							; if it has not been granted, wait
 		bne.s	.reset									; branch if it has been granted
-		trap #1							; if sub CPU is unresponsive
+		bra.w	InitFailure3							; if sub CPU is unresponsive
 
 	.reset:
 		bclr	#sub_reset_bit,mcd_reset-mcd_mem_mode(a3)		; set sub CPU to reset
@@ -188,13 +193,14 @@ EntryPoint:
 		bsr.w	Decompress_SubCPUProgram	; decompress the sub CPU program
 
 		move.b	#sub_bios_end>>9,mcd_write_protect-mcd_mem_mode(a3)		; enable write protect on BIOS code in program RAM
+		move.b	#sub_run,mcd_reset-mcd_mem_mode(a3)		; start the sub CPU
 
-		move.b	#sub_run,mcd_reset-mcd_mem_mode(a3)
+		move.w	#vdp_enable_vint,d0
+		or.b	SetupVDP(pc),d0
+		move.w	d0,(a6)			; enable VBlank on VDP
 		enable_ints
 
 	.waitwordram:
-		cmpi.b	#$FF,mcd_sub_flag-mcd_mem_mode(a3)	; is sub CPU OK?
-		beq.w	SubCrash				; branch if not
 		btst	#wordram_swapmain_bit,(a3)	; has sub CPU given us the word RAM?
 		beq.s	.waitwordram		; if not, wait
 
@@ -206,37 +212,23 @@ EntryPoint:
 		move.l d4,(a0)+		; clear 4 bytes of wordram
 		dbf d5,.clear_wordram	; repeat for entire wordram
 
-	;.gotomain:
-		bra.w	MainLoop
-; ===========================================================================
-
-SubCrash:
-		trap #0		; enter sub CPU error handler
-; ===========================================================================
-
-InitFailure1:
-		move.w	#cRed,(a5)				; if no Mega CD device is attached, set BG color to red
-		bra.s	*					; stay here forever
-; ===========================================================================
-InitFailure2:
-		move.w	#cBlue,(a5)				; if no matching BIOS is found, set BG color to blue
-		bra.s	*					; stay here forever
+		bra.w	WaitSubInit	; wait for sub CPU initialization to finish
 ; ===========================================================================
 
 SetupValues:
 		dc.w	$2700					; disable interrupts
 
 		dc.l	z80_ram				; a1
-		dc.l	workram				; a2
+		dc.l	workram_start		; a2
 		dc.l	mcd_mem_mode		; a3
 		dc.l	cd_bios_name		; a4
 		dc.l	vdp_data_port		; a5
 		dc.l	vdp_control_port	; a6
 
-		dc.w	vdp_mode_register2-vdp_mode_register1	; VDP Reg increment value & opposite initialisation flag for Z80
-		dc.w	vdp_md_color				; $8004; normal color mode, horizontal interrupts disabled
+		dc.w	vdp_mode_register2-vdp_mode_register1	; d1, VDP Reg increment value & opposite initialisation flag for Z80
+		dc.w	vdp_md_color				; d2, $8004; normal color mode, horizontal interrupts disabled
 	SetupVDP:
-		dc.b	(vdp_enable_vint|vdp_enable_dma|vdp_ntsc_display|vdp_md_display)&$FF ;  $8134; mode 5, NTSC, vertical interrupts and DMA enabled
+		dc.b	(vdp_enable_dma|vdp_ntsc_display|vdp_md_display)&$FF ;  $8134; mode 5, NTSC, DMA enabled
 		dc.b	(vdp_fg_nametable+(vram_fg>>10))&$FF	; $8230; foreground nametable starts at $C000
 		dc.b	(vdp_window_nametable+(vram_window>>10))&$FF ; $8328; window nametable starts at $A000
 		dc.b	(vdp_bg_nametable+(vram_bg>>13))&$FF	; $8407; background nametable starts at $E000
@@ -263,11 +255,11 @@ SetupValues:
 
 		arraysize SetupVDP
 
-		dc.l	$40000080				; DMA fill VRAM
-		dc.w	(sizeof_workram/4)-1	; workram clear loop counter
+		dc.l	vram_dma				; DMA fill VRAM
+		dc.w	(sizeof_ram/4)-1	; workram clear loop counter
 		dc.w	vdp_auto_inc+2				; VDP increment
-		dc.l	$40000010				; VSRAM write mode
-		dc.l	$C0000000				; CRAM write mode
+		dc.l	vsram_write				; VSRAM write mode
+		dc.l	cram_write				; CRAM write mode
    		dc.w	sizeof_z80_ram-1		; Z80 ram clear loop counter
 
 		dc.b	$9F,$BF,$DF,$FF				; PSG mute values (PSG 1 to 4)
@@ -329,4 +321,113 @@ MCDBIOS_Wondermega2:
 		dc.l	$416000
 		dc.b	"WONDERMEGA2 BOOTROM",0		; Victor WonderMega 2, JVC X'Eye
 		dc.b	0
+		even
+; ===========================================================================
+
+; d3 is already 0
+InitFailure3:
+		addq.b	#2,d3		; 4 = sub CPU timeout
+
+InitFailure2:
+		addq.b	#2,d3		; 2 = unidentified sub CPU
+							; 0 = no sub CPU found
+InitFailure1:
+		disable_ints
+		lea	-sizeof_Console_RAM(sp),sp
+		lea (sp),a3
+		pushr.w	d3
+		bsr.w	ErrorHandler_SetupVDP
+		bsr.w	Error_InitConsole		; set up console
+		popr.w	d3
+
+		move.w	FailureText_Index(pc,d3.w),d3
+		lea FailureText_Index-6(pc,d3.w),a5		; a5 = start of data for failure message
+		move.w	(a5)+,d5				; d5 = loop counter
+		movem.w	(a5)+,d0/d1			; d0/d1 = starting x and y pos
+		bsr.w	Console_SetPosAsXY		; set starting pos for message
+		moveq	#0,d4			; first line of message
+
+	.loop:
+		move.w	(a5,d4.w),d3
+		lea	(a5,d3.w),a0	; a0 = line of message
+		bsr.w	Console_WriteLine	; write line
+		bsr.w	Console_StartNewLine		; skip a line
+		addq.w	#2,d4		; next line
+		dbf	d5,.loop		; repeat for all lines of message
+
+	.done:
+		nop
+		nop
+		bra.s	.done		; stay here forever
+; ===========================================================================
+
+FailureText_Index:	index offset(*),,2
+		ptr	SubCPU_NotFound_Index	; 0
+		ptr	SubCPU_NotIdentified_Index ; 2
+		ptr	SubCPU_Unresponsive_Index ; 4
+; ===========================================================================
+
+		dc.w	(sizeof_SubCPU_NotFound_Index/2)-1
+		dc.w	0,9	; x pos, y pos
+SubCPU_NotFound_Index:	index offset(*),,2
+		ptr	.line1
+		ptr	.line2
+		ptr	.line3
+		ptr	.line4
+		ptr	.line5
+		arraysize	SubCPU_NotFound_Index
+
+
+.line1:	dc.b	'     Sorry, this test requires the      ',0
+		even
+.line2:	dc.b	'    Mega CD addon or equivalent, or     ',0
+		even
+.line3:	dc.b	'       Genesis Plus GX, BlastEm,        ',0
+		even
+.line4:	dc.b	'      Mega EverDrive Pro or MegaSD      ',0
+		even
+.line5:	dc.b	'    with a properly configured BIOS.    ',0
+		even
+; ===========================================================================
+
+		dc.w	(sizeof_SubCPU_NotIdentified_Index/2)-1
+		dc.w	0,9	; x pos, y pos
+SubCPU_NotIdentified_Index:	index offset(*),,2
+		ptr	.line1
+		ptr	.line2
+		ptr	.line3
+		ptr	.line4
+		ptr	.line5
+		arraysize	SubCPU_NotIdentified_Index
+
+
+.line1:	dc.b	'   A Mega CD device was detected, but   ',0
+		even
+.line2:	dc.b	'   it could not be identified. Please   ',0
+		even
+.line3:	dc.b	'     contact OrionNavattan, as this     ',0
+		even
+.line4:	dc.b	'      may be a previously unknown       ',0
+		even
+.line5:	dc.b	'            Mega CD device.             ',0
+		even
+; ===========================================================================
+
+		dc.w	(sizeof_SubCPU_Unresponsive_Index/2)-1
+		dc.w	0,10	; x pos, y pos
+SubCPU_Unresponsive_Index:	index offset(*),,2
+		ptr	.line1
+		ptr	.line2
+		ptr	.line3
+		ptr	.line4
+		arraysize	SubCPU_Unresponsive_Index
+
+
+.line1:	dc.b	'      The attached Mega CD device       ',0
+		even
+.line2:	dc.b	'    is not responding. Please verify    ',0
+		even
+.line3:	dc.b	'        that it is connected or         ',0
+		even
+.line4:	dc.b	'    otherwise functioning correctly.    ',0
 		even

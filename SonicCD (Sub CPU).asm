@@ -17,10 +17,11 @@
 
 		include "AXM68K 68k Only.asm"
 		include "Mega CD Sub CPU.asm"
-		include "Includes/Debugger Macros and Common Defs.asm"
+		include "includes/Debugger Macros and Common Defs.asm"
 		include "Common Macros.asm"
 		include "Constants (Sub CPU).asm"
 		include "RAM Addresses (Sub CPU).asm"
+	;	include "includes/Sub CPU Commands.asm"
 
 
 		org	sp_start
@@ -50,15 +51,15 @@ Init:
 		moveq	#10-1,d0			; 9 vectors + GFX int
 
 	.vectorloop:
-		addq.l	#2,a1		; skip over instruction word
+		addq.w	#2,a1		; skip over instruction word
 		move.l	(a0)+,(a1)+	; set table entry to point to exception entry point
 		dbf d0,.vectorloop	; repeat for all vectors and GFX int
 
 		move.l	(a0)+,(_TimerInt+2).w			; set timer interrupt address
-		move.b	(a0)+,(mcd_timer_interrupt).w	; set timer interrupt interval
+		move.b	(a0)+,(mcd_timerint_interval).w	; set timer interrupt interval
 
-		tst.b	(mcd_maincom_0).w
-		bne.w	.nodisc				; branch if disc detection has been disabled by the user
+	;	tst.b	(mcd_maincom_0).w
+	;	bne.w	.nodisc				; branch if disc detection has been disabled by the user
 
 		moveq	#DriveInit,d0
 		jsr	(_CDBIOS).w				; initialize the drive and get TOC
@@ -74,8 +75,8 @@ Init:
 		bne.w	.nodisc				; branch if there is no disc in the drive
 
 .readheader:
-		lea FileVars(pc),a5	; we use the file engine code to get the header sector
-		move.b	#cdc_dest_sub,(mcd_cdc_mode).w				; set CDC device to sub CPU
+		lea (FileVars).l,a5	; we use the file engine code to get the header sector
+		move.b	#cdc_dest_sub,(cdc_mode).w				; set CDC device to sub CPU
 		clr.l	fe_sector(a5)
 		move.l	#1,fe_sectorcount(a5)
 		move.l	#FileVars+fe_dirreadbuf,fe_readbuffer(a5)
@@ -138,7 +139,7 @@ Init:
 		move.w	#$800-1,d0			; wait for data set
 
 	.wait_loop:
-		btst	#cdc_dataready_bit,(mcd_cdc_mode).w
+		btst	#cdc_dataready_bit,(cdc_mode).w
 		dbne	d0,.wait_loop		; loop until ready or until it takes too long
 		bne.s	.transferdata			; if the data is ready to be transfered, branch
 
@@ -225,52 +226,35 @@ Main:
 		bcs.s	.waitfiles				; if not, wait
 
 		moveq	#'R',d0
+		move.b	d0,(mcd_subcom_0).w		; signal initialization success
 
-		move.b d0,(mcd_subcom_0).w	; we are ready
+	WaitReady:
+		cmpi.b	#$FF,(mcd_main_flag).w	; is main CPU OK?
+		beq.s	MainCrash1			; branch if so
+		cmp.b	(mcd_maincom_0).w,d0		; has main CPU acknowledged?
+		bne.s	WaitReady			; branch if not
 
-	.waitmainCPU:
-		cmp.b	(mcd_maincom_0).w,d0	; is main CPU ready?
-		bne.s	.waitmainCPU			; if not, wait
+		moveq	#0,d0
+		move.b	d0,(mcd_subcom_0).w		; we are ready to accept commands once main CPU clears its com register
 
-		clr.b	(mcd_subcom_0).w
+	.waitmainready:
+		tst.b	(mcd_maincom_0).w	; is main CPU ready to send commands?
+		bne.s	.waitmainready		; branch if not
 
-		; proceed to main command loop
-
-
-; -------------------------------------------------------------------------
-; GFX interrupt
-; -------------------------------------------------------------------------
-
-GFXInt:
-		clr.b	(f_gfx_op).w	; clear GFX operation flag
-		rte
+		bra.w	MainCommandLoop		; continue to main command loop
 
 ; -------------------------------------------------------------------------
-; VBlank
+; Main CPU crash
 ; -------------------------------------------------------------------------
 
-VBlank:
-		; check main CPU state
-		; exit if no disc
-		; check file engine routine
-		; exit if nothing to so
+MainCrash1:
+		trap #0
+; ===========================================================================
 
-		tst.b	(FileVars+fe_opermode).l	; do we need to run a file operation?
-		beq.s	.vblank_done						; branch if not
-
-		movem.l	d0-a6,-(sp)			; save registers
-		moveq	#id_FileFunc_Operation,d0			; perform engine operation
-		bsr.w	FileFunction
-		movem.l	(sp)+,d0-a6			; restore registers
-
-	.vblank_done:
-		rts
-
-		include "Includes/Sub/File Engine.asm"
-
-FileVars:
-		ds.b	sizeof_FileVars
-		even
+		include "includes/sub/VBlank and GFXInt.asm"
+		include "includes/sub/File Engine.asm"
+		include "includes/sub/Mega CD Exception Handler (Sub CPU).asm"
+		include "includes/sub/Command Handlers.asm"
 
 DriverInit:
 		rts
@@ -282,4 +266,9 @@ FileTable:
 
 fmv_pcm_buffer:
 		even
-		include "Includes/Sub/Mega CD Exception Handler (Sub CPU).asm"
+
+FileVars:
+		dcb.b	sizeof_FileVars,$FF
+		even
+		end
+

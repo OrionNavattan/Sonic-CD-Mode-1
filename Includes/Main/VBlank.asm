@@ -17,3 +17,6 @@ VBlank:
 
 	.exit:
 		rte
+
+HBlank:
+		rte

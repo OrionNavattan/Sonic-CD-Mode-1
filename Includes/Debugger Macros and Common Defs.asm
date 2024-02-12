@@ -12,7 +12,19 @@ DebugFeatures: 		equ 1
 ; Enable debugger extensions
 ; Pressing A/B/C on the exception screen can open other debuggers
 ; Pressing Start or unmapped button returns to the exception
-DebuggerExtensions:	equ 1	; Set to 1 to enable
+DebuggerExtensions:	equ 1
+
+; Use compact 24-bit offsets instead of 32-bit ones
+; This will display shorter offests next to the symbols in the exception screen header
+; M68K bus is limited to 24 bits anyways, so not displaying unused bits saves screen space
+UseCompactOffsets:	equ 1
+
+; Enable symbol table support for the sub CPU program
+; This requires the use of wordram for decompressing the tables for both CPUs when an exception occurs
+; IF YOU DISABLE THIS, YOU MUST COMMENT OUT OR REMOVE THE FOLLOWING LINE
+; IN THE BUILD SCRIPT FOR MAIN CPU SYMBOLS TO WORK CORRECTLY:
+; "mdcomp/koscmp.exe"	"Main CPU Symbols.bin" "Main CPU Symbols.kos"
+SubCPUSymbolSupport:	equ 1
 
 ; ---------------------------------------------------------------
 ; Constants
@@ -96,7 +108,7 @@ _eh_address_error:	equ	1<<extended_frame_bit	; use for address and bus errors on
 _eh_show_sr_usp:	equ	1<<show_sr_usp_bit		; displays SR and USP registers content on error screen
 
 ; Advanced execution flags
-; WARNING! For experts only, DO NOT USES them unless you know what you're doing
+; WARNING! For experts only, DO NOT USE them unless you know what you're doing
 _eh_return:			equ	1<<return_bit
 _eh_enter_console:	equ	1<<console_bit
 _eh_align_offset:	equ	1<<align_offset_bit
@@ -131,9 +143,9 @@ assert:	macro	src,cond,dest
 	else narg=2
 		tst.\0	\src
 	endc
-		b\cond\.s	@skip\@
+		b\cond\.s	.skip\@
 		RaiseError	"Assertion failed:%<endl>\src \cond \dest"
-	@skip\@:
+	.skip\@:
 	endc
 	endm
 
@@ -193,18 +205,28 @@ Console: macro
 	if strcmp("\0","write")|strcmp("\0","writeline")|strcmp("\0","Write")|strcmp("\0","WriteLine")
 		move.w	sr,-(sp)
 		__FSTRING_GenerateArgumentsCode \1
-		movem.l	a0-a2/d7,-(sp)
+
+		; If we have any arguments in string, use formatted string function ...
 		if (__sp>0)
+			movem.l	a0-a2/d7,-(sp)
 			lea	4*4(sp),a2
+			lea	.str\@(pc),a1
+			jsr	Console_\0\_Formatted
+			movem.l	(sp)+,a0-a2/d7
+			if (__sp>8)
+				lea	__sp(sp),sp
+			else
+				addq.w	#__sp,sp
+			endc
+
+		; ... Otherwise, use direct write as an optimization
+		else
+			move.l	a0,-(sp)
+			lea		.str\@(pc),a0
+			jsr		Console_\0
+			move.l	(sp)+,a0
 		endc
-		lea	.str\@(pc),a1
-		jsr	Console_\0\_Formatted
-		movem.l	(sp)+,a0-a2/d7
-		if (__sp>8)
-			lea	__sp(sp),sp
-		elseif (__sp>0)
-			addq.w	#__sp,sp
-		endc
+
 		move.w	(sp)+,sr
 		bra.w	.instr_end\@
 	.str\@:
@@ -272,21 +294,31 @@ KDebug: macro
 	if DebugFeatures
 	if strcmp("\0","write")|strcmp("\0","writeline")|strcmp("\0","Write")|strcmp("\0","WriteLine")
 		move.w	sr,-(sp)
+
 		__FSTRING_GenerateArgumentsCode \1
-		movem.l	a0-a2/d7,-(sp)
+
+		; If we have any arguments in string, use formatted string function ...
 		if (__sp>0)
+			movem.l	a0-a2/d7,-(sp)
 			lea	4*4(sp),a2
-		endc
-		lea	.str\@(pc),a1
-		jsr	KDebug_\0\_Formatted
-		movem.l	(sp)+,a0-a2/d7
-		if (__sp>8)
-			lea	__sp(sp),sp
-		elseif (__sp>0)
-			addq.w	#__sp,sp
+			lea	.str\@(pc),a1
+			jsr	KDebug_\0\_Formatted(pc)
+			movem.l	(sp)+,a0-a2/d7
+			if (__sp>8)
+				lea		__sp(sp),sp
+			elseif (__sp>0)
+				addq.w	#__sp,sp
+			endc
+
+		; ... Otherwise, use direct write as an optimization
+		else
+			move.l	a0,-(sp)
+			lea		.str\@(pc),a0
+			jsr		KDebug_\0(pc)
+			move.l	(sp)+,a0
 		endc
 		move.w	(sp)+,sr
-		bra.w	@instr_end\@
+		bra.w	.instr_end\@
 	.str\@:
 		__FSTRING_GenerateDecodedString \1
 		even
@@ -294,22 +326,22 @@ KDebug: macro
 
 	elseif strcmp("\0","breakline")|strcmp("\0","BreakLine")
 		move.w	sr,-(sp)
-		jsr	KDebug_FlushLine
+		jsr	KDebug_FlushLine(pc)
 		move.w	(sp)+,sr
 
 	elseif strcmp("\0","starttimer")|strcmp("\0","StartTimer")
 		move.w	sr,-(sp)
-		move.w	#$9FC0,(vdp_control_port).l
+		move.w	#vdp_kdebug_timer_start,(vdp_control_port).l
 		move.w	(sp)+,sr
 
 	elseif strcmp("\0","endtimer")|strcmp("\0","EndTimer")
 		move.w	sr,-(sp)
-		move.w	#$9F00,(vdp_control_port).l
+		move.w	#vdp_kdebug_timer_stop,(vdp_control_port).l
 		move.w	(sp)+,sr
 
 	elseif strcmp("\0","breakpoint")|strcmp("\0","BreakPoint")
 		move.w	sr,-(sp)
-		move.w	#$9D00,(vdp_control_port).l
+		move.w	#vdp_kdebug_timer_start,(vdp_control_port).l
 		move.w	(sp)+,sr
 
 	else
@@ -426,7 +458,7 @@ __FSTRING_GenerateDecodedString: macro string
 			endc
 
 			if (\__param < $80)
-				inform	2,"Illegal operand format setting: ""\__param\"". Expected ""hex"", ""dec"", ""bin"", ""sym"", ""str"" or their derivatives."
+				inform	2,"Illegal operand format setting: ""\__param\"". Expected ""hex"", ""deci"", ""bin"", ""sym"", ""str"" or their derivatives."
 			endc
 
 			if "\__type"=".b"

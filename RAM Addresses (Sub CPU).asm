@@ -52,3 +52,4 @@ fe_fmv:		rs.b	1			; FMV flags
 fe_fmvfailcount:	rs.b	1			; FMV fail counter
 
 sizeof_FileVars:		equ __rs		; size of structure
+

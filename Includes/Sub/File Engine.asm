@@ -53,7 +53,7 @@ FileFunction_NonInt:	; if we're calling this outside of VBlank, we want return v
 		rts
 
 FileFunction:				; assumes registers have already been backed up before call
-		lea	FileVars(pc),a5			; perform function
+		lea	(FileVars).l,a5			; perform function
 		add.w	d0,d0
 		move.w	FileFunction_Index(pc,d0.w),d0
 		jmp	FileFunction_Index(pc,d0.w)
@@ -412,8 +412,8 @@ ReadSectors:
 		move.w	#30,fe_retries(a5)		; set retry counter
 
 .startread:
-	;	move.b	fe_cdcmode(a5),(mcd_cdc_mode&$FFFFFF).l	; set CDC device
-	;	move.b	fe_cdcmode(a5),(mcd_cdc_mode).w	; set CDC device
+	;	move.b	fe_cdcmode(a5),(cdc_mode&$FFFFFF).l	; set CDC device
+		move.b	fe_cdcmode(a5),(cdc_mode).w	; set CDC device
 
 		lea	fe_sector(a5),a0			; get sector information
 		move.l	(a0),d0				; get sector frame (in BCD)
@@ -470,8 +470,8 @@ ReadSectors:
 		move.w	#$800-1,d0			; wait for data set
 
 	.wait_loop:
-	;	btst	#cdc_dataready_bit,(mcd_cdc_mode&$FFFFFF).l
-		btst	#cdc_dataready_bit,(mcd_cdc_mode).w
+	;	btst	#cdc_dataready_bit,(cdc_mode&$FFFFFF).l
+		btst	#cdc_dataready_bit,(cdc_mode).w
 		dbne	d0,.wait_loop		; loop until ready or until it takes too long
 		bne.s	.transferdata			; if the data is ready to be transfered, branch
 
@@ -524,8 +524,8 @@ ReadSectors:
 		move.w	#fstatus_ok,fe_status(a5)		; mark as successful
 
 	.done:
-	;	move.b	fe_cdcmode(a5),(mcd_cdc_mode&$FFFFFF).l
-		move.b	fe_cdcmode(a5),(mcd_cdc_mode).w	; set CDC device
+	;	move.b	fe_cdcmode(a5),(cdc_mode&$FFFFFF).l
+		move.b	fe_cdcmode(a5),(cdc_mode).w	; set CDC device
 		movea.l	fe_returnaddr(a5),a0		; go to saved return address
 		jmp	(a0)
 ; ===========================================================================
@@ -540,8 +540,8 @@ ReadSectors:
 
 	.waitmaincopy:
 		bsr.w	FileMode_SetOperMark		; set bookmark, return next VBlank
-	;	btst	#cdc_endtrans_bit,(mcd_cdc_mode&$FFFFFF).l	; has the data been transferred?
-		btst	#cdc_endtrans_bit,(mcd_cdc_mode).w		; has the data been transferred?
+	;	btst	#cdc_endtrans_bit,(cdc_mode&$FFFFFF).l	; has the data been transferred?
+		btst	#cdc_endtrans_bit,(cdc_mode).w		; has the data been transferred?
 		bne.s	.finish_sector_read		; if so, branch
 		subq.w	#1,fe_waittime(a5)		; decrement wait time
 		bge.s	.waitmaincopy			; if we are still waiting, branch
@@ -646,8 +646,8 @@ ReadFMVSectors:
 		move.w	#10,fe_retries(a5)		; set retry counter
 
 .startread:
-	;	move.b	fe_cdcmode(a5),(mcd_cdc_mode&$FFFFFF).l	; set CDC device
-		move.b	fe_cdcmode(a5),(mcd_cdc_mode).w	; set CDC device
+	;	move.b	fe_cdcmode(a5),(cdc_mode&$FFFFFF).l	; set CDC device
+		move.b	fe_cdcmode(a5),(cdc_mode).w	; set CDC device
 
 		lea	fe_sector(a5),a0			; get sector information
 		move.l	(a0),d0				; get sector frame (in BCD)
@@ -704,8 +704,8 @@ ReadFMVSectors:
 		move.w	#$800-1,d0			; wait for data set
 
 	.wait_loop:
-	;	btst	#cdc_dataready_bit,(mcd_cdc_mode&$FFFFFF).l
-		btst	#cdc_dataready_bit,(mcd_cdc_mode).w
+	;	btst	#cdc_dataready_bit,(cdc_mode&$FFFFFF).l
+		btst	#cdc_dataready_bit,(cdc_mode).w
 		dbne	d0,.wait_loop		; loop until ready or until it takes too long
 		bne.s	.transferdata			; if the data is ready to be transfered, branch
 
@@ -805,8 +805,8 @@ ReadFMVSectors:
 		move.w	#fstatus_ok,fe_status(a5)		; mark as successful
 
 .done:
-	;	move.b	fe_cdcmode(a5),(mcd_cdc_mode&$FFFFFF).l	; set CDC device
-		move.b	fe_cdcmode(a5),(mcd_cdc_mode).w	; set CDC device
+	;	move.b	fe_cdcmode(a5),(cdc_mode&$FFFFFF).l	; set CDC device
+		move.b	fe_cdcmode(a5),(cdc_mode).w	; set CDC device
 		movea.l	fe_returnaddr(a5),a0		; go to saved return address
 		jmp	(a0)
 ; ===========================================================================
@@ -871,8 +871,8 @@ ReadFMVSectors:
 
 	.waitmaincopy:
 		bsr.w	FileMode_SetOperMark		; set bookmark
-	;	btst	#cdc_endtrans_bit,(mcd_cdc_mode&$FFFFFF).l	; has the data been transferred?
-		btst	#cdc_endtrans_bit,(mcd_cdc_mode).w		; has the data been transferred?
+	;	btst	#cdc_endtrans_bit,(cdc_mode&$FFFFFF).l	; has the data been transferred?
+		btst	#cdc_endtrans_bit,(cdc_mode).w		; has the data been transferred?
 		bne.w	.finish_sector_read		; if so, branch
 		subq.w	#1,fe_waittime(a5)		; decrement wait v_time
 		bge.s	.waitmaincopy			; if we are still waiting, branch
@@ -950,8 +950,8 @@ ReadMuteFMVSectors:
 		move.w	#10,fe_retries(a5)		; set retry counter
 
 .startread:
-	;	move.b	fe_cdcmode(a5),(mcd_cdc_mode&$FFFFFF).l	; set CDC device
-		move.b	fe_cdcmode(a5),(mcd_cdc_mode).w	; set CDC device
+	;	move.b	fe_cdcmode(a5),(cdc_mode&$FFFFFF).l	; set CDC device
+		move.b	fe_cdcmode(a5),(cdc_mode).w	; set CDC device
 
 		lea	fe_sector(a5),a0			; get sector information
 		move.l	(a0),d0				; get sector frame (in BCD)
@@ -1008,8 +1008,8 @@ ReadMuteFMVSectors:
 		move.w	#$800-1,d0			; Wait for data set
 
 	.wait_loop:
-	;	btst	#cdc_dataready_bit,(mcd_cdc_mode&$FFFFFF).l
-		btst	#cdc_dataready_bit,(mcd_cdc_mode).w
+	;	btst	#cdc_dataready_bit,(cdc_mode&$FFFFFF).l
+		btst	#cdc_dataready_bit,(cdc_mode).w
 		dbne	d0,.wait_loop		; loop until ready or until it takes too long
 		bne.s	.transferdata			; if the data is ready to be transfered, branch
 
@@ -1092,8 +1092,8 @@ ReadMuteFMVSectors:
 		move.w	#fstatus_ok,fe_status(a5)		; mark as successful
 
 .done:
-	;	move.b	fe_cdcmode(a5),(mcd_cdc_mode&$FFFFFF).l	; set CDC device
-		move.b	fe_cdcmode(a5),(mcd_cdc_mode).w	; set CDC device
+	;	move.b	fe_cdcmode(a5),(cdc_mode&$FFFFFF).l	; set CDC device
+		move.b	fe_cdcmode(a5),(cdc_mode).w	; set CDC device
 		movea.l	fe_returnaddr(a5),a0		; go to saved return address
 		jmp	(a0)
 ; ===========================================================================
@@ -1108,8 +1108,8 @@ ReadMuteFMVSectors:
 
 	.waitmaincopy:
 		bsr.w	FileMode_SetOperMark		; set bookmark
-	;	btst	#cdc_endtrans_bit,(mcd_cdc_mode&$FFFFFF).l	; has the data been transferred?
-		btst	#cdc_endtrans_bit,(mcd_cdc_mode).w		; has the data been transferred?
+	;	btst	#cdc_endtrans_bit,(cdc_mode&$FFFFFF).l	; has the data been transferred?
+		btst	#cdc_endtrans_bit,(cdc_mode).w		; has the data been transferred?
 		bne.w	.finish_sector_read		; if so, branch
 		subq.w	#1,fe_waittime(a5)		; decrement wait v_time
 		bge.s	.waitmaincopy			; if we are still waiting, branch

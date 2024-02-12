@@ -32,11 +32,11 @@ FixBugs = 0		; Leave at 0 to preserve a handful of bugs and oddities in the orig
 		include "includes/Debugger Macros and Common Defs.asm"	; error handler definitions common to both CPUs
 		include "Common Macros.asm"					; macros common to both main and sub CPU programs
 		include "Macros (Main CPU).asm"
-	;	include "SpritePiece.asm"					; Sprite mapping macros
 	;	include "File List.asm"
-	;	include "Constants (Main CPU).asm"
+		include "Constants (Main CPU).asm"
 		include "RAM Addresses (Main CPU).asm"
 	;	include "VRAM Addresses.asm"
+	;	include "Sub CPU Commands.asm"
 
 	;	include "sound/Main CPU Sound Equates.asm"
 	;	include "sound/Main CPU Frequency, Note, Envelope, & Sample Definitions.asm" ; definitions used in both the Z80 sound driver and SMPS2ASM
@@ -67,18 +67,17 @@ Vectors:
 		dc.l ErrorExcept				; Uninitialized interrupt
 		dcb.l 8,ErrorExcept				; Unused (reserved)
 		dc.l ErrorExcept				; Spurious exception
-		dc.l ErrorTrap					; IRQ level 1
-		dc.l ErrorTrap					; IRQ level 2
-		dc.l ErrorTrap					; IRQ level 3
+		dc.l ErrorExcept					; IRQ level 1
+		dc.l ErrorExcept					; IRQ level 2
+		dc.l ErrorExcept					; IRQ level 3
 		dc.l HBlank						; IRQ level 4 (horizontal interrupt)
-		dc.l ErrorTrap					; IRQ level 5
+		dc.l ErrorExcept					; IRQ level 5
 		dc.l VBlank						; IRQ level 6 (vertical interrupt)
-		dc.l ErrorTrap					; IRQ level 7
+		dc.l ErrorExcept					; IRQ level 7
 		dc.l SubCPUError
 		dc.l DMAQueueOverflow
-		dc.l DMAQueueInvalidCount
-		dcb.l 13,ErrorTrap				; TRAP #00..#15 exceptions
-		dcb.l 16,ErrorTrap			; Unused (reserved)
+		dcb.l 14,ErrorExcept				; TRAP #00..#15 exceptions
+		dcb.l 16,ErrorExcept			; Unused (reserved)
 
 
 Header:
@@ -114,7 +113,8 @@ RAMStartLoc:
 		dc.l $FF0000		; RAM Start
 RAMEndLoc:
 		dc.l $FFFFFF		; RAM End
-		dc.b "RA", $A0+(BackupSRAM<<6)+(AddressSRAM<<3),$20
+	;	dc.b "RA", $A0+(BackupSRAM<<6)+(AddressSRAM<<3),$20
+		dc.b "   "
 		dc.l $200000					; SRAM start
 		dc.l $200FFF					; SRAM end
 		dc.b '                                                          ' ; Notes
@@ -140,10 +140,6 @@ MainLoop:		; At this point, both CPUs are ready. Continue with your main program
 
 ; ===========================================================================
 
-		include "includes/main/KosM to PrgRAM.asm"
-		include "includes/main/Kosinski Decompression.asm"
-; ===========================================================================
-
 gmptr:		macro
 		id_\1:	equ offset(*)-GameModeArray
 		if narg=1
@@ -156,20 +152,23 @@ gmptr:		macro
 
 GameModeArray:
 
-		gmptr	Sega			; 0
-		gmptr	Title			; 4
-		gmptr	Demo,Level		; 8
-		gmptr	Level			; $C
-		gmptr 	TimeWarp		; $10
-		gmptr	SpecialStage	; $14
-		gmptr	BURAM_SRAMManager	; $18
-		gmptr	DAGarden		; $1C
-		gmptr	FMV				; $20
-		gmptr 	SoundTest		; $24
-		gmptr	EasterEgg		; $28
-		gmptr 	StageSelect		; $2C
-		gmptr	BestStaffTimes	; $30
+	;	gmptr	Sega			; 0
+	;	gmptr	Title			; 4
+	;	gmptr	Demo,Level		; 8
+	;	gmptr	Level			; $C
+	;	gmptr 	TimeWarp		; $10
+	;	gmptr	SpecialStage	; $14
+	;	gmptr	BURAM_SRAMManager	; $18
+	;	gmptr	DAGarden		; $1C
+	;	gmptr	FMV				; $20
+	;	gmptr 	SoundTest		; $24
+	;	gmptr	EasterEgg		; $28
+	;	gmptr 	StageSelect		; $2C
+	;	gmptr	BestStaffTimes	; $30
 ; ===========================================================================
+
+		include "includes/main/KosM to PrgRAM.asm"
+		include "includes/main/Kosinski Decompression.asm"
 
 		include "includes/main/VBlank.asm"
 ; ===========================================================================

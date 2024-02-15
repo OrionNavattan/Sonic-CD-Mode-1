@@ -45,7 +45,7 @@ ErrorExcept:
 	__ErrorMessage "MAIN CPU: ERROR EXCEPTION", _eh_show_sr_usp
 
 DMAQueueOverflow:
-	__ErrorMessage "MAIN CPU: TIMED OUT WAITING FOR SUB CPU", _eh_show_sr_usp
+	__ErrorMessage "MAIN CPU: DMA QUEUE OVERFLOW", _eh_show_sr_usp
 
 ; ============================================================================
 ; ----------------------------------------------------------------------------

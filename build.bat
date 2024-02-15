@@ -6,7 +6,7 @@ type errors1.txt
 IF NOT EXIST "SonicCD (Sub CPU).bin" PAUSE & EXIT 2
 
 echo Compressing Sub CPU program; this may take a couple minutes.
-"clownlzss.exe" -k -m=0x2000 "SonicCD (Sub CPU).bin" "SonicCD (Sub CPU).kosm"
+ "Modulise.exe" "mdcomp/koscmp.exe" $2000 "SonicCD (Sub CPU).bin" "SonicCD (Sub CPU).kosm" -noindex -nolast -actualcount
 
 IF NOT EXIST "SonicCD (Sub CPU).kosm" PAUSE & EXIT 2
 

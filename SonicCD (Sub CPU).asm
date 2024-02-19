@@ -35,7 +35,7 @@ SubPrgHeader:	index.l *
 		dc.l	0							; workram size
 ; ===========================================================================
 
-		include_SubCPUGlobalVars
+		include_SubCPUGlobalVars	; space for a few global variables
 ; ===========================================================================
 
 UserCallTable:	index *
@@ -60,10 +60,11 @@ Init:
 		move.b	2(a0),(mcd_timerint_interval).w	; set timer interrupt interval
 
 		moveq	#DriveInit,d0
-		jsr	(_CDBIOS).w				; initialize the drive and get TOC (will start after controller finishes initializing)
+		jsr	(_CDBIOS).w				; initialize the drive and get TOC
 
 		moveq	#0,d0
 		clear_ram.w	SubCPUGlobalVars,sizeof_SubCPUGlobalVars	; clear global variables
+		clear_ram.pc	FileVars,sizeof_FileVars				; clear file engine variables
 
 		moveq	#id_FileFunc_EngineInit,d0
 		jsr	(FileFunction).w		; initialize the file engine
@@ -117,24 +118,23 @@ Main:
 		moveq	#1,d1
 		jsr	(_CDBIOS).w				; fetch TOC entry for track 1
 
-		tst.b	d1					; (0 if audio track, $FF if data track)
-		beq.w	.checktrackcount	; if this is an audio track, it's not a CD-ROM
+		tst.b	d1
+		beq.w	.checktrackcount	; branch if it's audio (most likely an audio CD)
 
-		jsr	(LoadDiscHeader).w		; load the disc header sector
+		jsr	(LoadDiscHeader).w		; load the disc's header (first sector)
 
 		cmpi.w	#fstatus_ok,d0		; was the operation a success?
 		bne.s	.nodisc				; if not, assume no disc
 
 		lea FileVars+fe_dirreadbuf(pc),a1	; a1 = disc type in header
-
 		lea DiscType(pc),a2					; header type we're checking for
 		moveq	#sizeof_DiscType-1,d1
 
 		jsr	(CompareStrings).w				; does the type in the header match?
 		bne.s	.checktrackcount			; if not, branch
 
-		lea(FileVars+fe_dirreadbuf+domestic_title(pc),a1	; game title in header
-		lea HeaderTitle(pc),a2							; header title we're checking for
+		lea	FileVars+fe_dirreadbuf+domestic_title(pc),a1	; game title in header
+		lea HeaderTitle(pc),a2
 		moveq	#sizeof_HeaderTitle-1,d1
 
 		jsr	(CompareStrings).w		; does the title in the header match?
@@ -144,10 +144,11 @@ Main:
 		cmpi.b	#35,(_CDDStatus+CDD_LastTrack).w		; does this CD have at least 35 tracks?
 		bcc.s	.audiocd				; if so, we can play music from this CD
 		bra.s	.nodisc					; otherwise, we can't use it; assume no disc
+; ===========================================================================
 
-	.getfiles:
+.getfiles:
 		moveq	#id_FileFunc_GetFiles,d0
-		bsr.w	FileFunction			; load the disc's filesystem
+		bsr.s	FileFunction			; load the disc's filesystem
 
 	.waitfiles:
 		jsr	(_WaitForVBlank).w			; file engine only runs during VBlank
@@ -167,7 +168,7 @@ Main:
 		moveq	#'R',d0
 		move.b	d0,(mcd_subcom_0).w		; signal initialization success
 
-	WaitReady:
+WaitReady:
 		cmpi.b	#$FF,(mcd_main_flag).w	; is main CPU OK?
 		beq.s	MainCrash1			; branch if so
 		cmp.b	(mcd_maincom_0).w,d0		; has main CPU acknowledged?
@@ -181,7 +182,6 @@ Main:
 		tst.b	(mcd_maincom_0).w	; is main CPU ready to send commands?
 		bne.s	.waitmainready		; branch if not
 
-	;	illegal
 		bra.w	MainCommandLoop		; continue to main command loop
 
 ; -------------------------------------------------------------------------

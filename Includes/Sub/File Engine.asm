@@ -1,4 +1,62 @@
 ; -------------------------------------------------------------------------
+; File engine function
+
+; input:
+;	d0.w - file engine function ID
+; -------------------------------------------------------------------------
+
+FileFunction_NonInt:	; if we're calling this outside of VBlank, we want return values in data registers
+		pushr.l	a0-a6				; save registers
+		bsr.s	FileFunction
+		popr.l	a0-a6
+		rts
+
+FileFunction:				; assumes registers have already been backed up before call or that we don't need them backed up
+		lea	FileVars(pc),a5			; perform function
+	;	add.w	d0,d0
+		move.w	FileFunction_Index(pc,d0.w),d0
+		jmp	FileFunction_Index(pc,d0.w)
+
+	;	pushr.l	a0-a6				; save registers
+	;	lea	(FileVars).l,a5			; perform function
+	;	add.w	d0,d0
+	;	move.w	FileFunction_Index(pc,d0.w),d0
+	;	jsr	FileFunction_Index(pc,d0.w)
+	;	popr.l	a0-a6			; restore registers
+	;	rts
+
+; -------------------------------------------------------------------------
+
+FileFunction_Index:	index *,,2
+		ptr	FileFunc_EngineInit	; initialize engine
+		ptr	FileFunc_GetDiscHeader
+		ptr	FileFunc_Operation	; perform operation
+		ptr	FileFunc_GetStatus	; get status
+		ptr	FileFunc_GetFiles	; get files
+		ptr	FileFunc_LoadFile	; load file
+		ptr	FileFunc_FindFile	; find file
+		ptr	FileFunc_LoadFMV	; load FMV
+		ptr	FileFunc_EngineReset	; reset engine
+		ptr	FileFunc_LoadMuteFMV	; load mute FMV
+
+; -------------------------------------------------------------------------
+; Load disc header
+; -------------------------------------------------------------------------
+
+LoadDiscHeader:
+		moveq	#id_FileFunc_GetDiscHeader,d0
+		bsr.s	FileFunction_NonInt
+
+	.waitload:
+		jsr	(_WaitForVBlank).w			; engine operation occurs during VBlank
+
+		moveq	#id_FileFunc_GetStatus,d0		; is the operation finished?
+		bsr.s	FileFunction_NonInt
+		bcs.s	.waitload				; if not, wait
+
+		rts
+
+; -------------------------------------------------------------------------
 ; Load file
 
 ; input:
@@ -19,7 +77,7 @@ LoadFile:
 		bcs.s	.waitload				; if not, wait
 
 		cmpi.w	#fstatus_ok,d0			; was the operation a success?
-		bne.w	LoadFile		; i not, try again
+		bne.s	LoadFile		; if not, try again
 		rts
 
 ; -------------------------------------------------------------------------
@@ -40,53 +98,21 @@ Get_Name:
 		rts
 
 ; -------------------------------------------------------------------------
-; File engine function
-
-; input:
-;	d0.w - file engine function ID
+; Get disc header
 ; -------------------------------------------------------------------------
 
-FileFunction_NonInt:	; if we're calling this outside of VBlank, we want return values in data registers
-		pushr.l	a0-a6				; save registers
-		bsr.s	FileFunction
-		popr.l	a0-a6
+FileFunc_GetDiscHeader:
+		move.w	#id_FileMode_GetDiscHeader,fe_opermode(a5)	; set operation mode to "get disc header"
 		rts
 
-FileFunction:				; assumes registers have already been backed up before call
-		lea	(FileVars).l,a5			; perform function
-		add.w	d0,d0
-		move.w	FileFunction_Index(pc,d0.w),d0
-		jmp	FileFunction_Index(pc,d0.w)
-
-	;	pushr.l	a0-a6				; save registers
-	;	lea	(FileVars).l,a5			; perform function
-	;	add.w	d0,d0
-	;	move.w	FileFunction_Index(pc,d0.w),d0
-	;	jsr	FileFunction_Index(pc,d0.w)
-	;	popr.l	a0-a6			; pestore registers
-	;	rts
-
 ; -------------------------------------------------------------------------
-
-FileFunction_Index:	index *
-		ptr	FileFunc_EngineInit	; initialize engine
-		ptr	FileFunc_Operation	; perform operation
-		ptr	FileFunc_GetStatus	; get status
-		ptr	FileFunc_GetFiles	; get files
-		ptr	FileFunc_LoadFile	; load file
-		ptr	FileFunc_FindFile	; find file
-		ptr	FileFunc_LoadFMV	; load FMV
-		ptr	FileFunc_EngineReset	; reset engine
-		ptr	FileFunc_LoadMuteFMV	; load mute FMV
-
-; -------------------------------------------------------------------------
-; get files
+; Get files
 ; -------------------------------------------------------------------------
 
 FileFunc_GetFiles:
 		move.w	#id_FileMode_GetFiles,fe_opermode(a5)	; set operation mode to "get files"
 		move.b	#1<<fmvflag_sect,fe_fmv(a5)		; mark as reading data section 1
-	;	move.l	f#0,e_fmvfailcount(a5)		; reset fail counter
+	;	move.l	#0,fe_fmvfailcount(a5)		; reset fail counter
 		clr.l	fe_fmvfailcount(a5)		; reset fail counter
 		rts
 
@@ -95,16 +121,6 @@ FileFunc_GetFiles:
 ; -------------------------------------------------------------------------
 
 FileFunc_EngineInit:
-	;	lea FileVars(pc),a1
-	;	move.w	#sizeof_FileVars/4-1,d1
-	;	moveq	#0,d0
-
-	;.loop:
-	;	move.l	d1,(a1)+	; clear 1 byte of variables
-	;	dbf	d0,.loop	; repeat for all file variables
-
-		clear_ram.pc	FileVars,sizeof_FileVars
-
 FileFunc_EngineReset:
 		move.l	#FileOperation,fe_operbookmark(a5)	; reset operation bookmark
 		move.w	#id_FileMode_None,fe_opermode(a5)	; set operation mode to "none"
@@ -128,14 +144,15 @@ FileMode_None:
 		bsr.s	FileMode_SetOperMark		; set bookmark
 
 		move.w	fe_opermode(a5),d0		; perform operation
-		add.w	d0,d0
+	;	add.w	d0,d0
 		move.w	FileOperation_Index(pc,d0.w),d0
 		jmp	FileOperation_Index(pc,d0.w)
 ; ===========================================================================
 
 
-FileOperation_Index:	index *
+FileOperation_Index:	index *,,2
 		ptr	FileMode_None		; none
+		ptr	FileMode_GetDiscHeader	; get disc header
 		ptr	FileMode_GetFiles	; get files
 		ptr	FileMode_LoadFile	; load file
 		ptr	FileMode_LoadFMV	; load FMV
@@ -148,6 +165,41 @@ FileOperation_Index:	index *
 FileMode_SetOperMark:
 		popr.l	fe_operbookmark(a5)		; set bookmark
 		rts
+
+; -------------------------------------------------------------------------
+; "Get disc header" operation
+; -------------------------------------------------------------------------
+
+FileMode_GetDiscHeader:
+		move.b	#cdc_dest_sub,fe_cdcmode(a5)				; set CDC device to sub CPU
+		clr.l	fe_sector(a5)					; read sector 0
+		move.l	#1,fe_sectorcount(a5)			; 1 sector
+		move.l	#FileVars+fe_dirreadbuf,fe_readbuffer(a5)	; read buffer (will be overwritten later)
+
+		lea	fe_sector(a5),a0			; get sector information
+		move.l	(a0),d0				; get sector frame (in BCD)
+		bsr.w	GetSectorFrame
+	;	divu.w	#75,d0				; divide sector count by 75
+	;	swap	d0
+	;	ext.l	d0					; only need remainder
+	;	divu.w	#10,d0				; divide by 10
+	;	move.b	d0,d1
+	;	lsl.b	#4,d1				; divide by 16
+	;	swap	d0
+	;	move	#0,ccr
+	;	abcd	d1,d0
+		move.b	d0,fe_sectorframe(a5)
+
+		bsr.w	ReadSectors		; read header sector
+
+
+		cmpi.w	#fstatus_ok,fe_status(a5)		; was the operation a success?
+		beq.s	.done				; if so, branch
+		move.w	#fstatus_loadfail,fe_status(a5)	; mark as failed
+
+	.done:
+		move.w	#id_FileMode_None,fe_opermode(a5)	; set operation mode to "none"
+		bra.w	FileOperation			; loop back
 
 ; -------------------------------------------------------------------------
 ; "Get files" operation
@@ -267,7 +319,7 @@ FileMode_LoadFile:
 
 	.read:
 		bsr.w	ReadSectors			; read file from disc
-		cmp.w	#fstatus_ok,fe_status(a5)		; was the operation a success?
+		cmpi.w	#fstatus_ok,fe_status(a5)		; was the operation a success?
 		beq.s	.done				; if so, branch
 		move.w	#fstatus_loadfail,fe_status(a5)	; mark as failed
 
@@ -348,7 +400,7 @@ FileFunc_LoadFile:
 
 FileFunc_FindFile:
 		pushr.l	a2			; save a2
-		moveq	#0,d1				; pepare to find file
+		moveq	#0,d1				; prepare to find file
 		movea.l	a0,a1
 		moveq	#sizeof_filename-2,d0
 
@@ -367,7 +419,7 @@ FileFunc_FindFile:
 	.got_length:
 		move.w	fe_filecount(a5),d0		; prepare to scan file list
 		movea.l	a0,a1			; a1 - filename
-		lea	fe_filelist(a5),a0		; return this in a0 if it is the first tile
+		lea	fe_filelist(a5),a0		; return this in a0 if it is the first file
 
 		lea	.first_file(pc),a2		; are we retrieving the first file?
 		bsr.w	CompareStrings
@@ -400,7 +452,19 @@ FileFunc_FindFile:
 	.first_file:
 		dc.b	"\          ",0
 		even
+; ===========================================================================
 
+GetSectorFrame:
+		divu.w	#75,d0				; divide sector count by 75
+		swap	d0
+		ext.l	d0					; only need remainder
+		divu.w	#10,d0				; divide by 10
+		move.b	d0,d1
+		lsl.b	#4,d1				; divide by 16
+		swap	d0
+		move	#0,ccr
+		abcd	d1,d0
+		rts
 ; -------------------------------------------------------------------------
 ; Read sectors from CD
 ; -------------------------------------------------------------------------
@@ -417,15 +481,16 @@ ReadSectors:
 
 		lea	fe_sector(a5),a0			; get sector information
 		move.l	(a0),d0				; get sector frame (in BCD)
-		divu.w	#75,d0
-		swap	d0
-		ext.l	d0
-		divu.w	#10,d0
-		move.b	d0,d1
-		lsl.b	#4,d1
-		swap	d0
-		move	#0,ccr
-		abcd	d1,d0
+		bsr.s	GetSectorFrame
+	;	divu.w	#75,d0				; divide sector count by 75
+	;	swap	d0
+	;	ext.l	d0					; only need remainder
+	;	divu.w	#10,d0				; divide by 10
+	;	move.b	d0,d1
+	;	lsl.b	#4,d1				; divide by 16
+	;	swap	d0
+	;	move	#0,ccr
+	;	abcd	d1,d0
 		move.b	d0,fe_sectorframe(a5)
 
 		move.w	#DecoderStop,d0			; stop CDC
@@ -434,7 +499,6 @@ ReadSectors:
 		moveq	#ROMReadNum,d0			; start reading
 		jsr	(_CDBIOS).w
 		move.w	#600,fe_waittime(a5)		; set wait timer
-
 	.bookmark:
 		bsr.w	FileMode_SetOperMark		; set bookmark; continue at next VBlank
 ; ===========================================================================
@@ -622,7 +686,7 @@ FileMode_LoadFMV:
 
 	.read:
 		bsr.w	ReadFMVSectors			; read FMV file data
-		cmp.w	#fstatus_ok,fe_status(a5)		; was the operation a success?
+		cmpi.w	#fstatus_ok,fe_status(a5)		; was the operation a success?
 		beq.s	.done				; if so, branch
 		move.w	#fstatus_loadfail,fe_status(a5)	; mark as failed
 
@@ -651,16 +715,18 @@ ReadFMVSectors:
 
 		lea	fe_sector(a5),a0			; get sector information
 		move.l	(a0),d0				; get sector frame (in BCD)
-		divu.w	#75,d0
-		swap	d0
-		ext.l	d0
-		divu.w	#10,d0
-		move.b	d0,d1
-		lsl.b	#4,d1
-		swap	d0
-		move	#0,ccr
-		abcd	d1,d0
+		bsr.w	GetSectorFrame
+	;	divu.w	#75,d0				; divide sector count by 75
+	;	swap	d0
+	;	ext.l	d0					; only need remainder
+	;	divu.w	#10,d0				; divide by 10
+	;	move.b	d0,d1
+	;	lsl.b	#4,d1				; divide by 16
+	;	swap	d0
+	;	move	#0,ccr
+	;	abcd	d1,d0
 		move.b	d0,fe_sectorframe(a5)
+
 
 		move.w	#DecoderStop,d0			; stop CDC
 		jsr	(_CDBIOS).w
@@ -955,16 +1021,18 @@ ReadMuteFMVSectors:
 
 		lea	fe_sector(a5),a0			; get sector information
 		move.l	(a0),d0				; get sector frame (in BCD)
-		divu.w	#75,d0
-		swap	d0
-		ext.l	d0
-		divu.w	#10,d0
-		move.b	d0,d1
-		lsl.b	#4,d1
-		swap	d0
-		move	#0,ccr
-		abcd	d1,d0
+		bsr.w	GetSectorFrame
+	;	divu.w	#75,d0				; divide sector count by 75
+	;	swap	d0
+	;	ext.l	d0					; only need remainder
+	;	divu.w	#10,d0				; divide by 10
+	;	move.b	d0,d1
+	;	lsl.b	#4,d1				; divide by 16
+	;	swap	d0
+	;	move	#0,ccr
+	;	abcd	d1,d0
 		move.b	d0,fe_sectorframe(a5)
+
 
 		move.w	#DecoderStop,d0			; stop CDC
 		jsr	(_CDBIOS).w

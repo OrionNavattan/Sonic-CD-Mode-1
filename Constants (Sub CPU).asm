@@ -42,6 +42,10 @@ sizeof_filename:	equ	12			; File name length
 file_name:		rs.b	sizeof_filename		; file name
 				rs.b	$17-__rs
 file_flags:		rs.b	1			; file flags
-file_sector:	rs.l	1			; fFile sector
+file_sector:	rs.l	1			; file sector
 file_length:	rs.l	1			; file size
 sizeof_fileentry:	equ __rs			; size of structure
+
+
+; Disc header
+domestic_title:	equ $120

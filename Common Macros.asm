@@ -208,7 +208,7 @@ arraysize:	macros
 ; (MUST be even address), end location (may be defined with rsblock)
 ; ---------------------------------------------------------------------------
 
-WarnForward:	equ 1
+WarnForward:	equ 0
 
 clear_ram:	macro startaddr,size
 

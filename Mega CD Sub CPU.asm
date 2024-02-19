@@ -208,7 +208,7 @@ _SubCPUStack:	equ $5E80 ; sub CPU initial stack pointer
 ; BIOS status table and flags
 ; _BIOSStatus, _LEDStatus, and _CDStatus are updated by calling the BIOSStatus function
 _BIOSStatus:	equ	$5E80	; _CDSTAT; CD BIOS status
-_DriveInitStatus:	equ _BIOSStatus
+_DriveInitStatus:	equ _BIOSStatus ; high nybble
 	drive_ready_bit:	equ 7	; 0 = drive ready; 1 = drive busy
 	tray_open_bit:	equ 6	; 1 = tray/door open
 	toc_read_bit:	equ 5	; 1 = drive is reading disc TOC
@@ -217,9 +217,10 @@ _DriveInitStatus:	equ _BIOSStatus
 	tray_open:		equ 1<<tray_open_bit
 	toc_read:		equ 1<<toc_read_bit
 	no_disc:		equ 1<<no_disc_bit
-	toc_done:		equ 0
+	;toc_done:		equ 0
+	drive_init_nybble:	equ no_disc|toc_read|tray_open|drive_ready
 
-_CDDAStatus:	equ _BIOSStatus
+_CDDAStatus:	equ _BIOSStatus ; low nybble
 	cdda_seek_bit:	equ 3	; 1 = drive is set to play CDDA in seek mode (i.e., set to stop at a specific track)
 	cdda_pause_bit:	equ 2	; 1 = CDDA is paused
 	cdda_scan_bit:	equ 1	; 1 = CDDA is scanning (i.e., fast forwarding or rewinding)

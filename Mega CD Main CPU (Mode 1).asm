@@ -123,6 +123,13 @@ vdp_control_port:	equ $C00004
 	cram_write:		equ ((vdp_cram_write&1)<<31)|(vdp_write<<16)|((vdp_cram_write&$7E)<<3)	; $C0000000
 	cram_dma:		equ ((vdp_cram_write&1)<<31)|(vdp_write<<16)|((vdp_cram_write&$7E)<<3)|vdp_dma	; $C0000080
 
+	; KDebug registers for Gens KMod and Blastem
+	vdp_kdebug_breakpoint:		equ $9D00
+	vdp_kdebug_message:			equ $9E00
+	vdp_kdebug_timer:			equ $9F00
+	vdp_kdebug_timer_stop:		equ vdp_kdebug_timer
+	vdp_kdebug_timer_start:		equ vdp_kdebug_timer+$C0
+
 vdp_counter:		equ $C00008
 psg_input:			equ $C00011
 debug_reg:			equ $C0001C

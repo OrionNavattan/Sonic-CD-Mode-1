@@ -18,11 +18,8 @@
 Main:	group word,org(0) ; we have to use the long form of group declaration to avoid triggering an overlay warning during assembly
 		section MainProgram,Main
 
-FixBugs = 0		; Leave at 0 to preserve a handful of bugs and oddities in the original game.
-				; Set to 1 to fix them.
 
-				; Region setting is done in the build script.
-
+MainCPU: equ 1 ; enable some debugging features for Main CPU only
 
 		include "Macros - More CPUs.asm"	; Z80 support macros
 		cpu 68000
@@ -95,11 +92,11 @@ Header:
 		dc.b 'SONIC THE HEDGEHOG-CD                           ' ; International name
 
 ;	if region=japan				; Game version
-;		dc.b	"GM G-6021  -00  "
+;		dc.b	"GM G-6021  -00"
 ;	elseif region=usa
-		dc.b	"GM MK-4407 -00  "
+		dc.b	"GM MK-4407 -00"
 ;	else
-;		dc.b	"GM MK-4407-00   "
+;		dc.b	"GM MK-4407-00 "
 ;    endc
 Checksum:
 		dc.w $0000			; Checksum
@@ -124,19 +121,53 @@ EndOfHeader:
 ; ===========================================================================
 
 		include "includes/main/Mega CD Initialization.asm"	; EntryPoint
+; ===========================================================================
+
+SubCrash1:
+		trap #0
+; ===========================================================================
 
 WaitSubInit:
-		cmpi.b	#$FF,(mcd_sub_flag).l	; is sub CPU OK?
-		bne.s	.subOK				; branch if so
-		trap #0
+		moveq	#'R',d0		; flag for initialization success
+		lea	mcd_subcom_0-mcd_mem_mode(a3),a3
 
-	.subOK:
-		cmpi.b	#'R',(mcd_subcom_0).l	; is sub CPU done initializing?
-		bne.s	WaitSubInit				; branch if not
+WaitReady:
+		cmpi.b	#$FF,mcd_sub_flag-mcd_subcom_0(a3)	; is sub CPU OK?
+		beq.s	SubCrash1				; branch if not
+		cmp.b	(a3),d0		; is sub CPU done initializing?
+		bne.s	WaitReady				; branch if not
 
-MainLoop:		; At this point, both CPUs are ready. Continue with your main program from here.
-		move.w	#cGreen,(vdp_data_port).l	; signal success
-		bra.s *								; stay here forever
+		move.b	mcd_subcom_1-mcd_subcom_0(a3),(v_disc_status).w	; get disc status from sub CPU
+		move.b	d0,mcd_maincom_0-mcd_subcom_0(a3)	; acknowledge
+
+	.waitack:
+		tst.b	(a3)	; is sub CPU ready?
+		bne.s	.waitack						; branch if not
+
+		clr.b	mcd_maincom_0-mcd_subcom_0(a3)	; we are ready to send commands
+
+		vdp_comm.l	move,0,cram,write,(vdp_control_port).l
+
+		moveq	#cRed,d0		; red no disc
+		moveq	#0,d1
+
+		move.b	(v_disc_status).w,d1	; get disc status
+		tst.b	d1
+		beq.s	.setcolor	; branch if no disc
+
+		move.w	#cGreen,d0	; green if disc match
+		cmpi.b	#2,d1
+		beq.s	.setcolor
+
+		move.w	#cBlue,d0	; blue if disc present but no match
+
+	.setcolor:
+		move.w	d0,(vdp_data_port).l	; set color
+
+MainLoop:
+		cmpi.b	#$FF,mcd_sub_flag-mcd_subcom_0(a3)	; is sub CPU OK?
+		beq.s	SubCrash1
+		bra.s 	MainLoop							; stay here forever
 
 ; ===========================================================================
 

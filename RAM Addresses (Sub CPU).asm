@@ -12,9 +12,9 @@ v_disc_status:	ds.b 1		; 0 - no disc, 1 - CDDA only, 2 - CDDA and FMV
 v_pcm_module:	ds.b 1			; current PCM music module
 v_ss_flags:		ds.b 1			; special stage flags copy
 f_gfx_op:			ds.b 1		; flag indicating a GFX operation is in progress
+v_vblank_counter:	ds.w 1		; byte that increments every VBlank
 
 		arraysize	SubCPUGlobalVars
-		even
 		endm
 
 ; -------------------------------------------------------------------------

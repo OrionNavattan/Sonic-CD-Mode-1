@@ -20,7 +20,7 @@ Decompress_SubCPUProgram:
 		cmp.w	d5,d0
 		bls.s	.nobankswitch			; branch if module count is 13 or less (no bankswitching required)
 		sub.w	d5,d0					; deincrement module counter
-		moveq	#(sizeof_program_ram_window-sp_start)/sizeof_module-1,d7	; 13 modules in first bank - 1
+		moveq	#(sizeof_program_ram_window-sp_start)/sizeof_module-1,d7	; 13 modules in first bank1
 
 		pushr.w	d0
 		bsr.s	.decompress				; decompress the first 13 modules to first bank

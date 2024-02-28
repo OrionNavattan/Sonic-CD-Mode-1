@@ -15,3 +15,5 @@ vram_hscroll:			equ $FC00			; horizontal scroll table ($380 bytes); extends unti
 cGreen:		equ $0E0					; color green
 cRed:		equ $00E					; color red
 cBlue:		equ $E00					; color blue
+
+sizeof_ost:		equ $40

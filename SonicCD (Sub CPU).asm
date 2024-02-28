@@ -56,23 +56,21 @@ Init:
 		move.l	(a0)+,(a1)+	; set table entry to point to exception entry point
 		dbf d0,.vectorloop	; repeat for all vectors and GFX int
 
+		move.l	(a0)+,(_Trap0+2).w	; set main CPU error vector
 		move.l	(a0)+,(_TimerInt+2).w			; set timer interrupt address
 		move.b	2(a0),(mcd_timerint_interval).w	; set timer interrupt interval
 
 		moveq	#DriveInit,d0
 		jsr	(_CDBIOS).w				; initialize the drive and get TOC
 
-		moveq	#0,d0
-		clear_ram.w	SubCPUGlobalVars,sizeof_SubCPUGlobalVars	; clear global variables
-		clear_ram.pc	FileVars,sizeof_FileVars				; clear file engine variables
-
 		moveq	#id_FileFunc_EngineInit,d0
 		jsr	(FileFunction).w		; initialize the file engine
+
 		jmp	(DriverInit).l			; initialize the PCM driver
 ; ===========================================================================
 
 SetupValues:
-		dc.l AddressError
+		dc.l AddressError	; error handler entry points
 		dc.l IllegalInstr
 		dc.l ZeroDivide
 		dc.l ChkInstr
@@ -82,8 +80,9 @@ SetupValues:
 		dc.l Line1010Emu
 		dc.l Line1111Emu
 		dc.l GFXInt			; GFX int address
+		dc.l MainCPUError	; main CPU error vector
 		dc.l RunPCMDriver	; timer int address
-		dc.b 1,$FF			; drive init parameters
+		dc.b 1,$FF			; DriveInit parameters
 		dc.b 255			; timer interrupt interval
 
 DiscType:

@@ -120,7 +120,15 @@ Main:
 		tst.b	d1
 		beq.w	.checktrackcount	; branch if it's audio (most likely an audio CD)
 
-		jsr	(LoadDiscHeader).w		; load the disc's header (first sector)
+		moveq	#id_FileFunc_GetDiscHeader,d0
+		jsr	(FileFunction).w				; load the disc's header (sector 1)
+
+	.waitload:
+		jsr	(_WaitForVBlank).w			; engine operation occurs during VBlank
+
+		moveq	#id_FileFunc_GetStatus,d0		; is the operation finished?
+		jsr	(FileFunction).w
+		bcs.s	.waitload				; if not, wait
 
 		cmpi.w	#fstatus_ok,d0		; was the operation a success?
 		bne.s	.nodisc				; if not, assume no disc

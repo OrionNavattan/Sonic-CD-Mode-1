@@ -5,8 +5,8 @@
 ;	d0.w - file engine function ID
 ; -------------------------------------------------------------------------
 
-FileFunction_NonInt:	; if we're calling this outside of VBlank, we want return values in data registers
-		pushr.l	a0-a6				; save registers
+FileFunction_NonInt:		; if we're calling this outside of VBlank, we may want return values in data registers
+		pushr.l	a0-a6				; save address registers
 		bsr.s	FileFunction
 		popr.l	a0-a6
 		rts
@@ -38,23 +38,6 @@ FileFunction_Index:	index *,,2
 		ptr	FileFunc_LoadFMV	; load FMV
 		ptr	FileFunc_EngineReset	; reset engine
 		ptr	FileFunc_LoadMuteFMV	; load mute FMV
-
-; -------------------------------------------------------------------------
-; Load disc header
-; -------------------------------------------------------------------------
-
-LoadDiscHeader:
-		moveq	#id_FileFunc_GetDiscHeader,d0
-		bsr.s	FileFunction_NonInt
-
-	.waitload:
-		jsr	(_WaitForVBlank).w			; engine operation occurs during VBlank
-
-		moveq	#id_FileFunc_GetStatus,d0		; is the operation finished?
-		bsr.s	FileFunction_NonInt
-		bcs.s	.waitload				; if not, wait
-
-		rts
 
 ; -------------------------------------------------------------------------
 ; Load file

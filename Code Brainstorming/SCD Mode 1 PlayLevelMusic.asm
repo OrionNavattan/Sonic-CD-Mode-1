@@ -242,7 +242,7 @@ SubCmd_PlayPCMMusic:
 
 		waitwordram			; wait while main CPU decompressed the module
 
-		lea	(word_ram_2M).l,a1	; source of decompressed data
+		lea	(wordram_2M).l,a1	; source of decompressed data
 		lea	(MusicModule).l,a2	; area of PRGRAM reserved for music samples
 		move.w	(mcd_maincom_2).w,d0		; get count of bytes to copy
 

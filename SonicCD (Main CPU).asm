@@ -128,6 +128,8 @@ SubCrash1:
 ; ===========================================================================
 
 WaitSubInit:
+	;	bset	#wordram_swapsub_bit,(mcd_mem_mode).l ; give wordram to the sub CPU
+
 		moveq	#'R',d0		; flag for initialization success
 		lea	mcd_subcom_0-mcd_mem_mode(a3),a3
 
@@ -169,6 +171,40 @@ MainLoop:
 		beq.s	SubCrash1
 		bra.s 	MainLoop							; stay here forever
 
+	;	lea	-sizeof_Console_RAM(sp),sp
+	;	lea (sp),a3
+	;	jsr	(ErrorHandler_SetupVDP).l
+	;	jsr	(Error_InitConsole).l		; set up console
+
+;sizeof_TTZDriver:	equ		filesize("SNCBNK4B.BIN")
+
+	;	move.l #(sizeof_TTZDriver)/4-1,d0
+	;	move.l	d0,d1
+	;	lea	(wordram_2m),a0
+	;	lea TTZ_Driver(pc),a1
+
+	;.cmploop:
+	;	cmpm.b	(a0)+,(a1)+
+	;	bne.s	.fail
+
+	;	dbf	d0,.cmploop
+
+	;	Console.Write	"Success! Driver loaded from "
+	;	Console.Write	"disc matches copy in ROM!"
+
+	;	bra.w	Done
+
+	;.fail:
+
+	;	suba.l	#wordram_2m,a0
+	;	Console.Write	"Failure! Driver loaded from disc "
+	;	Console.Write	"does NOT match copy in ROM! "
+	;	Console.Write	"Mismatch at %<.l a0 hex> bytes "
+	;	Console.Write	"out of %<.w d1 hex> bytes total."
+
+;Done:
+;		bra.s *
+
 ; ===========================================================================
 
 gmptr:		macro
@@ -202,6 +238,9 @@ GameModeArray:
 		include "includes/main/Kosinski Decompression.asm"
 
 		include "includes/main/VBlank.asm"
+
+;TTZ_Driver:
+	;	incbin	"SNCBNK4B.BIN"
 ; ===========================================================================
 
 SubCPU_Program:

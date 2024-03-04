@@ -159,22 +159,7 @@ FileMode_GetDiscHeader:
 		move.l	#1,fe_sectorcount(a5)			; 1 sector
 		move.l	#FileVars+fe_dirreadbuf,fe_readbuffer(a5)	; read buffer (will be overwritten later)
 
-		lea	fe_sector(a5),a0			; get sector information
-		move.l	(a0),d0				; get sector frame (in BCD)
-		bsr.w	GetSectorFrame
-	;	divu.w	#75,d0				; divide sector count by 75
-	;	swap	d0
-	;	ext.l	d0					; only need remainder
-	;	divu.w	#10,d0				; divide by 10
-	;	move.b	d0,d1
-	;	lsl.b	#4,d1				; divide by 16
-	;	swap	d0
-	;	move	#0,ccr
-	;	abcd	d1,d0
-		move.b	d0,fe_sectorframe(a5)
-
 		bsr.w	ReadSectors		; read header sector
-
 
 		cmpi.w	#fstatus_ok,fe_status(a5)		; was the operation a success?
 		beq.s	.done				; if so, branch
@@ -221,6 +206,7 @@ FileMode_GetFiles:
 		bsr.w	ReadSectors			; read sector of root directory
 		cmpi.w	#fstatus_readfail,fe_status(a5)	; was the operation a failure?
 		beq.w	.failed				; if so, branch
+
 
 		lea	fe_filelist(a5),a0		; go to file list cursor
 		move.w	fe_filecount(a5),d0		; d0 = current file count
@@ -813,7 +799,7 @@ ReadFMVSectors:
 .pcm_done:
 		move.b	#fmvdata_gfx,fe_fmv_datatype(a5)	; set graphics data type
 		bclr	#fmvflag_sect,fe_fmv(a5)		; mark as reading data section 2
-		move.l	#word_ram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
+		move.l	#wordram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
 		bra.w	.advance
 ; ===========================================================================
 
@@ -873,7 +859,7 @@ ReadFMVSectors:
 .pcm_done2:
 		move.b	#fmvdata_gfx,fe_fmv_datatype(a5)	; set graphics data type
 		bclr	#fmvflag_sect,fe_fmv(a5)		; mark as reading data section 2
-		move.l	#word_ram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
+		move.l	#wordram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
 		bra.w	.Advance2
 ; ===========================================================================
 
@@ -937,7 +923,7 @@ ReadFMVSectors:
 FileFunc_LoadMuteFMV:
 		move.b	#1<<fmvflag_sect,fe_fmv(a5)		; mark as reading data section 1
 		move.w	#id_FileMode_LoadMuteFMV,fe_opermode(a5)	; set operation mode to "load mute FMV"
-		move.l	#word_ram_1M,fe_readbuffer(a5)	; prepare to read graphics data
+		move.l	#wordram_1M,fe_readbuffer(a5)	; prepare to read graphics data
 	;	move.w	#0,fe_fmv_sectframe(a5)		; reset FMV sector frame
 		clr.w	fe_fmv_sectframe(a5)		; reset FMV sector frame
 
@@ -1133,7 +1119,7 @@ ReadMuteFMVSectors:
 		btst	#bank_swap_request_bit,(mcd_mem_mode).w
 		bne.s	.waitwordRAM
 
-		move.l	#word_ram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
+		move.l	#wordram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
 	;	move.w	#0,fe_fmv_sectframe(a5)		; reset FMV sector frame
 		clr.w	fe_fmv_sectframe(a5)		; reset FMV sector frame
 

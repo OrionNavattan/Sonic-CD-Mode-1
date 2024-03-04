@@ -10,12 +10,12 @@ program_ram:		equ	0 ; Mega CD Program RAM
 sp_start:			equ $6000	; start of user program in program RAM
 program_ram_end:	equ	$80000	; MCD PRG-RAM end
 
-word_ram:			equ $80000 ; Mega CD Word RAM
-word_ram_2M:		equ	word_ram	; MCD Word RAM start (2M)
-word_ram_2M_end:	equ	$C0000	; MCD Word RAM end (2M)
+wordram:			equ $80000 ; Mega CD Word RAM
+wordram_2M:		equ	wordram	; MCD Word RAM start (2M)
+wordram_2M_end:	equ	$C0000	; MCD Word RAM end (2M)
 
-word_ram_1M:		equ	$C0000	; MCD Word RAM start (1M/1M)
-word_ram_1M_end:	equ	$E0000	; MCD Word RAM end (1M/1M)
+wordram_1M:		equ	$C0000	; MCD Word RAM start (1M/1M)
+wordram_1M_end:	equ	$E0000	; MCD Word RAM end (1M/1M)
 
 ; Backup RAM
 backup_ram:			equ	$FE0000	; Mega CD backup RAM (only odd bytes accessible)

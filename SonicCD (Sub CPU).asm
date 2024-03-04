@@ -36,6 +36,7 @@ SubPrgHeader:	index.l *
 ; ===========================================================================
 
 		include_SubCPUGlobalVars	; space for a few global variables
+		even
 ; ===========================================================================
 
 UserCallTable:	index *
@@ -105,10 +106,10 @@ Main:
 		move.b	(a0),d0
 
 		cmpi.b	#no_disc,d0
-		beq.s	.nodisc			; branch if no disc was found
+		beq.w	.nodisc			; branch if no disc was found
 
 		cmpi.b	#tray_open,d0
-		beq.s	.nodisc			; branch if drive was open
+		beq.w	.nodisc			; branch if drive was open
 
 		andi.b	#drive_init_nybble,d0
 		bne.s	.waitinit			; branch if drive is not ready
@@ -155,13 +156,13 @@ Main:
 
 .getfiles:
 		moveq	#id_FileFunc_GetFiles,d0
-		bsr.s	FileFunction			; load the disc's filesystem
+		jsr	(FileFunction).w			; load the disc's filesystem
 
 	.waitfiles:
 		jsr	(_WaitForVBlank).w			; file engine only runs during VBlank
 
 		moveq	#id_FileFunc_GetStatus,d0		; is the operation finished?
-		bsr.s	FileFunction
+		jsr	(FileFunction).w
 		bcs.s	.waitfiles				; if not, wait
 
 		addq.b	#1,(v_disc_status).w	; 2 = full CD audio and FMV support
@@ -189,7 +190,27 @@ WaitReady:
 		tst.b	(mcd_maincom_0).w	; is main CPU ready to send commands?
 		bne.s	.waitmainready		; branch if not
 
-		bra.w	MainCommandLoop		; continue to main command loop
+PCMDriver:	equ $40000
+PCMDriverOrg:	equ	PCMDriver+$10
+_PCMDriverRun:	equ PCMDriverOrg
+_PCMDriverInit:	equ PCMDriver+$14
+_PCMDriverQueue:	equ PCMDriver+$18+$A
+pcmmus_Past:	equ $81
+
+		lea	File_R4PCM(pc),a0		; load TTZ's PCM driver from the disc
+		lea	(PCMDriver).l,a1		; (driver is hardcoded to run at $40000)
+		jsr (LoadFile).w
+
+		jsr	(_PCMDriverInit).l		; initialize the driver
+
+
+		move.b	#pcmmus_Past,(_PCMDriverQueue).l		; set driver to play its music
+		bset	#timer_int_bit,(mcd_interrupt_control).w	; enable timer interrupt
+
+	.done:
+		cmpi.b	#$FF,(mcd_main_flag).w	; is main CPU OK?
+		beq.s	MainCrash1			; branch if so
+		bra.s	.done	; stay here forever
 
 ; -------------------------------------------------------------------------
 ; Main CPU crash
@@ -203,18 +224,27 @@ MainCrash1:
 		include "includes/sub/File Engine.asm"
 
 		include "includes/sub/Mega CD Exception Handler (Sub CPU).asm"
-		include "includes/sub/Command Handlers.asm"
+	;	include "includes/sub/Command Handlers.asm"
 
 NullRTS:
 DriverInit:
 		rts
 
 RunPCMDriver:
+		bchg	#0,(f_rundriver).w		; should we run the driver on this interrupt?
+		beq.s	.done				; if not, branch
+
+		movem.l	d0-a6,-(sp)			; Run the driver
+		jsr	(_PCMDriverRun).l
+		movem.l	(sp)+,d0-a6
+
+	.done:
 		rte
 
 FileVars:
-		dcb.b	sizeof_FileVars,$FF
+		dcb.b	sizeof_FileVars,0
 		even
+
 
 FileTable:
 File_R11A:

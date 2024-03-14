@@ -67,6 +67,9 @@ Decompress_SubCPUProgram:
 
 	.decompress:
 		bsr.s	KosDec			; decompress the module
+		move.w	a0,d0			; advance to next even address in source if necessary
+		andi.w	#1,d0			; (koscmp is unfortunately hardcoded to pad all output to even length)
+		adda.w	d0,a0
 		dbf	d7,.decompress		; repeat until end of bank or end of data
 		rts
 

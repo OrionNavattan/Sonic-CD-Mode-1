@@ -12,8 +12,9 @@ v_disc_status:	ds.b 1		; 0 - no disc, 1 - CDDA only, 2 - CDDA and FMV
 v_pcm_module:	ds.b 1			; current PCM music module
 v_ss_flags:		ds.b 1			; special stage flags copy
 f_gfx_op:			ds.b 1		; flag indicating a GFX operation is in progress
-v_vblank_counter:	ds.w 1		; byte that increments every VBlank
-
+v_vblank_counter:	ds.b 1		; byte that increments every VBlank
+v_joypad_hold:		rs.w 1				; joypad input - held, actual
+v_joypad_press:		equ __rs-1			; joypad input - pressed, actual
 		arraysize	SubCPUGlobalVars
 		endm
 
@@ -53,3 +54,13 @@ fe_fmvfailcount:	rs.b	1			; FMV fail counter
 
 sizeof_FileVars:		equ __rs		; size of structure
 
+
+; -------------------------------------------------------------------------
+; Mode-specific variables
+; -------------------------------------------------------------------------
+
+; Requirements for each sub CPU program mode:
+
+; Title screen: - $62
+; Special stage: - $1C96
+; DA Garden: - $60

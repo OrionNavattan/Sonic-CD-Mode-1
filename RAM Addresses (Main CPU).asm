@@ -9,10 +9,10 @@
 v_kosm_buffer:			rs.b $1000
 ;v_16x16_tiles:			rs.b $2000
 v_level_layout:			rs.b $800
-v_hscroll_buffer: 		rs.b $400		; Horizontal scroll buffer
+v_hscroll_buffer: 		rs.b $400		; horizontal scroll buffer
 v_sprite_queue:         rs.b $400
-v_sprite_buffer:		rs.b $280
-v_image_buffer:			rs.b $5800		; buffer for transformed images in title screen, special stage, and DA garden
+v_sprite_buffer:		rs.b $280		; sprite table buffer
+v_image_buffer:			rs.b $5800		; main CPU-side buffer for transformed images in title screen, special stage, and DA garden
 v_16x16_tiles:			equ  v_image_buffer
 
 v_stack:			rs.b $FFFF8000-__rs
@@ -547,7 +547,7 @@ menuOptions	rs.b	8			; Available menu options
 ;p1CtrlTap	rs.b	1			; Player 1 controller tapped buttons data
 cloudsCtrlFlag	rs.b	1			; Clouds control flag
 	;	RSEVEN
-fmSndQueue	rs.b	1			; FM sound queue
+;fmSndQueue	rs.b	1			; FM sound queue
 	;	RSEVEN
 subWaitTime	rs.l	1			; Sub CPU wait time
 subFailCount	rs.b	1			; Sub CPU fail count

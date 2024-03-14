@@ -10,12 +10,12 @@ program_ram:		equ	0 ; Mega CD Program RAM
 sp_start:			equ $6000	; start of user program in program RAM
 program_ram_end:	equ	$80000	; MCD PRG-RAM end
 
-word_ram:			equ $80000 ; Mega CD Word RAM
-word_ram_2M:		equ	word_ram	; MCD Word RAM start (2M)
-word_ram_2M_end:	equ	$C0000	; MCD Word RAM end (2M)
+wordram:			equ $80000 ; Mega CD Word RAM
+wordram_2M:		equ	wordram	; MCD Word RAM start (2M)
+wordram_2M_end:	equ	$C0000	; MCD Word RAM end (2M)
 
-word_ram_1M:		equ	$C0000	; MCD Word RAM start (1M/1M)
-word_ram_1M_end:	equ	$E0000	; MCD Word RAM end (1M/1M)
+wordram_1M:		equ	$C0000	; MCD Word RAM start (1M/1M)
+wordram_1M_end:	equ	$E0000	; MCD Word RAM end (1M/1M)
 
 ; Backup RAM
 backup_ram:			equ	$FE0000	; Mega CD backup RAM (only odd bytes accessible)
@@ -199,7 +199,7 @@ gfx_imgstart:	equ	$FFFF805E 	; image buffer start address; same restrictions on 
 gfx_imgoffset:	equ	$FFFF8060 	; specifies an optional offset of up to 7 pixels on each axis, bits 0-2 horizontal, bits 3-5 vertical
 gfx_img_hsize:	equ	$FFFF8062 	; image buffer width in pixels, maximum 511 pixels
 gfx_img_vsize: 	equ	$FFFF8064 	; image buffer height in pixels, maximum 255 pixels
-gfx_tracetbl:	equ	$FFFF8066 	; start address of trace vector table;  same restrictions on location apply as with stampmaps (writing this also triggers the start of a graphics operation)
+gfx_tracetbl:	equ	$FFFF8066 	; start address of trace vector table, expressed as offset relative to start of 2M word RAM divided by 4;  same restrictions on location apply as with stampmaps (writing this also triggers the start of a graphics operation)
 
 ; Subcode registers; BIOS use only
 subcode_addr:	equ	$FFFF8068 	; subcode top address

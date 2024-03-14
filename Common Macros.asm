@@ -126,7 +126,11 @@ index:		macro start,idstart,idinc
 
 ptr:		macro
 		if index_start=-1
-			dc.\index_width \1-offset(*)
+			if type(\1)&2=2
+				dc.\index_width \1-offset(*)	; if sections/groups are in use
+			else
+				dc.\index_width \1-*
+			endc
 		else
 			dc.\index_width \1-index_start
 		endc

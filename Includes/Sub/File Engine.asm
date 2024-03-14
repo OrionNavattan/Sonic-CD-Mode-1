@@ -813,7 +813,7 @@ ReadFMVSectors:
 .pcm_done:
 		move.b	#fmvdata_gfx,fe_fmv_datatype(a5)	; set graphics data type
 		bclr	#fmvflag_sect,fe_fmv(a5)		; mark as reading data section 2
-		move.l	#word_ram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
+		move.l	#wordram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
 		bra.w	.advance
 ; ===========================================================================
 
@@ -873,7 +873,7 @@ ReadFMVSectors:
 .pcm_done2:
 		move.b	#fmvdata_gfx,fe_fmv_datatype(a5)	; set graphics data type
 		bclr	#fmvflag_sect,fe_fmv(a5)		; mark as reading data section 2
-		move.l	#word_ram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
+		move.l	#wordram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
 		bra.w	.Advance2
 ; ===========================================================================
 
@@ -937,7 +937,7 @@ ReadFMVSectors:
 FileFunc_LoadMuteFMV:
 		move.b	#1<<fmvflag_sect,fe_fmv(a5)		; mark as reading data section 1
 		move.w	#id_FileMode_LoadMuteFMV,fe_opermode(a5)	; set operation mode to "load mute FMV"
-		move.l	#word_ram_1M,fe_readbuffer(a5)	; prepare to read graphics data
+		move.l	#wordram_1M,fe_readbuffer(a5)	; prepare to read graphics data
 	;	move.w	#0,fe_fmv_sectframe(a5)		; reset FMV sector frame
 		clr.w	fe_fmv_sectframe(a5)		; reset FMV sector frame
 
@@ -1133,7 +1133,7 @@ ReadMuteFMVSectors:
 		btst	#bank_swap_request_bit,(mcd_mem_mode).w
 		bne.s	.waitwordRAM
 
-		move.l	#word_ram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
+		move.l	#wordram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
 	;	move.w	#0,fe_fmv_sectframe(a5)		; reset FMV sector frame
 		clr.w	fe_fmv_sectframe(a5)		; reset FMV sector frame
 

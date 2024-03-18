@@ -207,17 +207,17 @@ MainLoop:
 
 ; ===========================================================================
 
-gmptr:		macro
-		id_\1:	equ offset(*)-GameModeArray
-		if narg=1
-		bra.w	GM_\1
-		else
-		bra.w	GM_\2
-		endc
-		endm
+;gmptr:		macro
+;		id_\1:	equ offset(*)-GameModeArray
+;		if narg=1
+;		bra.w	GM_\1
+;		else
+;		bra.w	GM_\2
+;		endc
+;		endm
 
 
-GameModeArray:
+;GameModeArray:
 
 	;	gmptr	Sega			; 0
 	;	gmptr	Title			; 4
@@ -239,8 +239,6 @@ GameModeArray:
 
 		include "includes/main/VBlank.asm"
 
-;TTZ_Driver:
-	;	incbin	"SNCBNK4B.BIN"
 ; ===========================================================================
 
 SubCPU_Program:

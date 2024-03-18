@@ -49,3 +49,12 @@ sizeof_fileentry:	equ __rs			; size of structure
 
 ; Disc header
 domestic_title:	equ $120
+
+
+PCMDriver:	equ $40000
+PCMDriverOrg:	equ	PCMDriver+$10
+_PCMDriverRun:	equ PCMDriverOrg
+_PCMDriverInit:	equ PCMDriver+$14
+_PCMDriverQueue:	equ PCMDriver+$18+$A
+pcmmus_Past:	equ $81
+

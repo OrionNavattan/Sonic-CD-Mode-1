@@ -65,9 +65,9 @@ Init:
 		jsr	(_CDBIOS).w				; initialize the drive and get TOC
 
 		moveq	#id_FileFunc_EngineInit,d0
-		jsr	(FileFunction).w		; initialize the file engine
+		jmp	(FileFunction).w		; initialize the file engine
 
-		jmp	(DriverInit).l			; initialize the PCM driver
+	;	jmp	(DriverInit).l			; initialize the PCM driver
 ; ===========================================================================
 
 SetupValues:
@@ -155,7 +155,7 @@ Main:
 ; ===========================================================================
 
 .getfiles:
-		moveq	#id_FileFunc_GetFiles,d0
+		moveq	#id_FileFunc_LoadFilesystem,d0
 		jsr	(FileFunction).w			; load the disc's filesystem
 
 	.waitfiles:
@@ -190,19 +190,11 @@ WaitReady:
 		tst.b	(mcd_maincom_0).w	; is main CPU ready to send commands?
 		bne.s	.waitmainready		; branch if not
 
-PCMDriver:	equ $40000
-PCMDriverOrg:	equ	PCMDriver+$10
-_PCMDriverRun:	equ PCMDriverOrg
-_PCMDriverInit:	equ PCMDriver+$14
-_PCMDriverQueue:	equ PCMDriver+$18+$A
-pcmmus_Past:	equ $81
-
 		lea	File_R4PCM(pc),a0		; load TTZ's PCM driver from the disc
 		lea	(PCMDriver).l,a1		; (driver is hardcoded to run at $40000)
 		jsr (LoadFile).w
 
 		jsr	(_PCMDriverInit).l		; initialize the driver
-
 
 		move.b	#pcmmus_Past,(_PCMDriverQueue).l		; set driver to play its music
 		bset	#timer_int_bit,(mcd_interrupt_control).w	; enable timer interrupt
@@ -227,7 +219,7 @@ MainCrash1:
 	;	include "includes/sub/Command Handlers.asm"
 
 NullRTS:
-DriverInit:
+;DriverInit:
 		rts
 
 RunPCMDriver:
@@ -244,7 +236,6 @@ RunPCMDriver:
 FileVars:
 		dcb.b	sizeof_FileVars,0
 		even
-
 
 FileTable:
 File_R11A:

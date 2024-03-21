@@ -72,8 +72,10 @@ FileFunction_Index:	index *,,2
 ; Initialize file engine
 ; -------------------------------------------------------------------------
 
-FileFunc_EngineInit:
 FileFunc_EngineReset:
+		move.w	#DecoderStop,d0			; stop CDC
+		jsr	(_CDBIOS).w
+FileFunc_EngineInit:
 		move.l	#FileOperation,fe_operbookmark(a5)	; reset operation bookmark
 		move.w	#id_FileMode_None,fe_opermode(a5)	; set operation mode to "none"
 		rts
@@ -250,7 +252,6 @@ CompareStrings:
 	.done:
 		popr.l	d1/a1-a2			; restore registers
 		rts
-
 
 ; -------------------------------------------------------------------------
 ; Initiate streaming an FMV with PCM sound
@@ -492,7 +493,7 @@ BeginSectorRead:
 		ext.l	d0					; only need remainder
 		divu.w	#10,d0				; divide by 10
 		move.b	d0,d1
-		lsl.b	#4,d1				; divide by 16
+		lsl.b	#4,d1				; multiply by 16
 		swap	d0
 		move.w	#0,ccr
 		abcd	d1,d0
@@ -500,8 +501,6 @@ BeginSectorRead:
 
 		move.w	#600,fe_waittime(a5)		; set wait timer
 
-		move.w	#DecoderStop,d0			; stop CDC
-		jsr	(_CDBIOS).w
 		moveq	#ROMReadNum,d0			; start reading the sectors
 		jmp	(_CDBIOS).w
 
@@ -600,9 +599,9 @@ ReadSectors:
 		move.w	#fstatus_ok,fe_status(a5)		; mark as successful
 
 	.done:
-		move.b	fe_cdcmode(a5),(cdc_mode).w	; set CDC device
-		movea.l	fe_returnaddr(a5),a0		; go to saved return address
-		jmp	(a0)
+		pushr.l	fe_returnaddr(a5)		; get return address
+		move.w	#DecoderStop,d0			; stop CDC until next time
+		jmp	(_CDBIOS).w
 ; ===========================================================================
 
 .read_failed:
@@ -788,9 +787,9 @@ ReadFMVSectors:
 		move.w	#fstatus_ok,fe_status(a5)		; mark as successful
 
 .done:
-		move.b	fe_cdcmode(a5),(cdc_mode).w	; set CDC device
-		movea.l	fe_returnaddr(a5),a0		; go to saved return address
-		jmp	(a0)
+		pushr.l	fe_returnaddr(a5)		; get return address
+		move.w	#DecoderStop,d0			; stop CDC until next time
+		jmp	(_CDBIOS).w
 ; ===========================================================================
 
 .read_failed:
@@ -1008,9 +1007,9 @@ ReadMuteFMVSectors:
 		move.w	#fstatus_ok,fe_status(a5)		; mark as successful
 
 .done:
-		move.b	fe_cdcmode(a5),(cdc_mode).w	; set CDC device
-		movea.l	fe_returnaddr(a5),a0		; go to saved return address
-		jmp	(a0)
+		pushr.l	fe_returnaddr(a5)		; get return address
+		move.w	#DecoderStop,d0			; stop CDC until next time
+		jmp	(_CDBIOS).w
 ; ===========================================================================
 
 .read_failed:

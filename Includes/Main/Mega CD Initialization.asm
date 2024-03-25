@@ -336,22 +336,22 @@ InitFailure1:
 		lea	-sizeof_Console_RAM(sp),sp
 		lea (sp),a3
 		pushr.w	d3
-		bsr.w	ErrorHandler_SetupVDP
-		bsr.w	Error_InitConsole		; set up console
+		jsr	(ErrorHandler_SetupVDP).l
+		jsr	(Error_InitConsole).l		; set up console
 		popr.w	d3
 
 		move.w	FailureText_Index(pc,d3.w),d3
 		lea FailureText_Index-6(pc,d3.w),a5		; a5 = start of data for failure message
 		move.w	(a5)+,d5				; d5 = loop counter
 		movem.w	(a5)+,d0/d1			; d0/d1 = starting x and y pos
-		bsr.w	Console_SetPosAsXY		; set starting pos for message
+		jsr	(Console_SetPosAsXY).l		; set starting pos for message
 		moveq	#0,d4			; first line of message
 
 	.loop:
 		move.w	(a5,d4.w),d3
 		lea	(a5,d3.w),a0	; a0 = line of message
-		bsr.w	Console_WriteLine	; write line
-		bsr.w	Console_StartNewLine		; skip a line
+		jsr	(Console_WriteLine).l	; write line
+		jsr	(Console_StartNewLine).l		; skip a line
 		addq.w	#2,d4		; next line
 		dbf	d5,.loop		; repeat for all lines of message
 

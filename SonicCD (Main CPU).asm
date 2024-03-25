@@ -128,6 +128,8 @@ SubCrash1:
 ; ===========================================================================
 
 WaitSubInit:
+	;	bset	#wordram_swapsub_bit,(mcd_mem_mode).l ; give wordram to the sub CPU
+
 		moveq	#'R',d0		; flag for initialization success
 		lea	mcd_subcom_0-mcd_mem_mode(a3),a3
 
@@ -168,7 +170,6 @@ MainLoop:
 		cmpi.b	#$FF,mcd_sub_flag-mcd_subcom_0(a3)	; is sub CPU OK?
 		beq.s	SubCrash1
 		bra.s 	MainLoop							; stay here forever
-
 ; ===========================================================================
 
 gmptr:		macro
@@ -202,6 +203,7 @@ GameModeArray:
 		include "includes/main/Kosinski Decompression.asm"
 
 		include "includes/main/VBlank.asm"
+
 ; ===========================================================================
 
 SubCPU_Program:

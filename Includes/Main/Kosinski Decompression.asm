@@ -25,8 +25,8 @@
 ; 	a1	destination address
 ; ---------------------------------------------------------------------------
 _Kos_UseLUT = 1
-_Kos_LoopUnroll = 0
-_Kos_ExtremeUnrolling = 0
+;_Kos_LoopUnroll = 0
+;_Kos_ExtremeUnrolling = 0
 
 _Kos_RunBitStream macro
 		dbra	d2,.skip\@
@@ -36,40 +36,40 @@ _Kos_RunBitStream macro
 		bne.s	.skip\@					; Branch if not.
 		move.b	(a0)+,d0				; Get desc field low-byte.
 		move.b	(a0)+,d1				; Get desc field hi-byte.
-		if _Kos_UseLUT
+;		if _Kos_UseLUT
 		move.b	(a4,d0.w),d0		; Invert bit order...
 		move.b	(a4,d1.w),d1		; ... for both bytes.
-		endc
-	
+;		endc
+
 	.skip\@:
 		endm
 
 _Kos_ReadBit macro
-	if _Kos_UseLUT
+;	if _Kos_UseLUT
 		add.b	d0,d0				; Get a bit from the bitstream.
-	else
-		lsr.b	#1,d0				; Get a bit from the bitstream.
-	endc
+	;else
+;		lsr.b	#1,d0				; Get a bit from the bitstream.
+;	endc
 		endm
 ; ===========================================================================
 
 ; ||||||||||||||| S U B R O U T I N E |||||||||||||||||||||||||||||||||||||||
 ; ---------------------------------------------------------------------------
 KosDec:
-	if _Kos_LoopUnroll>0
-		moveq	#(1<<_Kos_LoopUnroll)-1,d7
-	endc
-	if _Kos_UseLUT
+;	if _Kos_LoopUnroll>0
+;		moveq	#(1<<_Kos_LoopUnroll)-1,d7
+;	endc
+;	if _Kos_UseLUT
 		moveq	#0,d0
 		moveq	#0,d1
 		lea	KosDec_ByteMap(pc),a4	; Load LUT pointer.
-	endc
+;	endc
 		move.b	(a0)+,d0				; Get desc field low-byte.
 		move.b	(a0)+,d1				; Get desc field hi-byte.
-	if _Kos_UseLUT
+;	if _Kos_UseLUT
 		move.b	(a4,d0.w),d0		; Invert bit order...
 		move.b	(a4,d1.w),d1		; ... for both bytes.
-	endc
+;	endc
 		moveq	#7,d2					; Set repeat count to 8.
 		moveq	#0,d3					; d3 will be desc field switcher.
 		bra.s	.FetchNewCode
@@ -119,11 +119,11 @@ KosDec:
 		move.b	d4,d5					; d5 = %11111111 HHHHHCCC.
 		lsl.w	#5,d5					; d5 = %111HHHHH CCC00000.
 		move.b	d6,d5					; d5 = %111HHHHH LLLLLLLL.
-	if _Kos_LoopUnroll=3
-		and.w	d7,d4				; d4 = %00000CCC.
-	else
+;	if _Kos_LoopUnroll=3
+;		and.w	d7,d4				; d4 = %00000CCC.
+;	else
 			andi.w	#7,d4				; d4 = %00000CCC.
-	endc
+;	endc
 		bne.s	.StreamCopy				; if CCC=0, branch.
 
 		; special mode (extended counter)
@@ -134,45 +134,45 @@ KosDec:
 
 		adda.w	d5,a5
 		move.b	(a5)+,(a1)+				; Do 1 extra copy (to compensate +1 to copy counter).
-	if _Kos_LoopUnroll>0
-		move.w	d4,d6
-		not.w	d6
-		and.w	d7,d6
-		add.w	d6,d6
-		lsr.w	#_Kos_LoopUnroll,d4
-		jmp	.largecopy(pc,d6.w)
-	endc
+;	if _Kos_LoopUnroll>0
+;		move.w	d4,d6
+;		not.w	d6
+;		and.w	d7,d6
+;		add.w	d6,d6
+;		lsr.w	#_Kos_LoopUnroll,d4
+;		jmp	.largecopy(pc,d6.w)
+;	endc
 ; ---------------------------------------------------------------------------
 .largecopy:
-	rept (1<<_Kos_LoopUnroll)
+;	rept (1<<_Kos_LoopUnroll)
 			move.b	(a5)+,(a1)+
-	endr
+;	endr
 		dbra	d4,.largecopy
 		bra.w	.FetchNewCode
 ; ---------------------------------------------------------------------------
-	if _Kos_ExtremeUnrolling=1
-.StreamCopy:
-		adda.w	d5,a5
-		move.b	(a5)+,(a1)+				; Do 1 extra copy (to compensate +1 to copy counter).
-		if _Kos_LoopUnroll=3
-			eor.w	d7,d4
-		else
-			eori.w	#7,d4
-		endc
-		add.w	d4,d4
-		jmp	.mediumcopy(pc,d4.w)
+;	if _Kos_ExtremeUnrolling=1
+;.StreamCopy:
+;		adda.w	d5,a5
+;		move.b	(a5)+,(a1)+				; Do 1 extra copy (to compensate +1 to copy counter).
+;		if _Kos_LoopUnroll=3
+;			eor.w	d7,d4
+;		else
+;			eori.w	#7,d4
+;		endc
+;		add.w	d4,d4
+;		jmp	.mediumcopy(pc,d4.w)
 ; ---------------------------------------------------------------------------
-.mediumcopy:
-		rept 8
-			move.b	(a5)+,(a1)+
-		endm
-		bra.w	.FetchNewCode
-	endc
+;.mediumcopy:
+;		rept 8
+;			move.b	(a5)+,(a1)+
+;		endm
+;		bra.w	.FetchNewCode
+;	endc
 ; ---------------------------------------------------------------------------
 .Quit:
 		rts								; End of function KosDec.
 ; ===========================================================================
-	if _Kos_UseLUT
+;	if _Kos_UseLUT
 KosDec_ByteMap:
 		dc.b	$00,$80,$40,$C0,$20,$A0,$60,$E0,$10,$90,$50,$D0,$30,$B0,$70,$F0
 		dc.b	$08,$88,$48,$C8,$28,$A8,$68,$E8,$18,$98,$58,$D8,$38,$B8,$78,$F8
@@ -190,6 +190,6 @@ KosDec_ByteMap:
 		dc.b	$0B,$8B,$4B,$CB,$2B,$AB,$6B,$EB,$1B,$9B,$5B,$DB,$3B,$BB,$7B,$FB
 		dc.b	$07,$87,$47,$C7,$27,$A7,$67,$E7,$17,$97,$57,$D7,$37,$B7,$77,$F7
 		dc.b	$0F,$8F,$4F,$CF,$2F,$AF,$6F,$EF,$1F,$9F,$5F,$DF,$3F,$BF,$7F,$FF
-	endc
+;	endc
 ; ===========================================================================
 

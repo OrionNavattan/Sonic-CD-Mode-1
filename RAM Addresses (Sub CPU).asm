@@ -10,11 +10,13 @@ SubCPUGlobalVars:
 
 v_disc_status:	ds.b 1		; 0 - no disc, 1 - CDDA only, 2 - CDDA and FMV
 v_pcm_module:	ds.b 1			; current PCM music module
+f_rundriver:	ds.b 1
 v_ss_flags:		ds.b 1			; special stage flags copy
 f_gfx_op:			ds.b 1		; flag indicating a GFX operation is in progress
 v_vblank_counter:	ds.b 1		; byte that increments every VBlank
 v_joypad_hold:		rs.w 1				; joypad input - held, actual
 v_joypad_press:		equ __rs-1			; joypad input - pressed, actual
+
 		arraysize	SubCPUGlobalVars
 		endm
 

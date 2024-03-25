@@ -806,6 +806,7 @@ ReadFMVSectors:
 		move.b	#fmvdata_gfx,fe_fmv_datatype(a5)	; set graphics data type
 		bclr	#fmvflag_sect,fe_fmv(a5)		; mark as reading data section 2
 		move.l	#wordram_1M,fe_readbuffer(a5)	; set read buffer for graphics data
+
 		bra.s	.advance2
 ; ===========================================================================
 
@@ -844,7 +845,7 @@ ReadFMVSectors:
 		bgt.w	.startread			; if there are still sectors to read, branch
 		move.w	#fstatus_fmvfail,fe_status(a5)	; mark as failed
 		bra.w	.done
-
+    
 ; -------------------------------------------------------------------------
 ; "Load mute FMV" operation
 ; -------------------------------------------------------------------------

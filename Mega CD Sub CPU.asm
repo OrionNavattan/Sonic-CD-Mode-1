@@ -199,7 +199,7 @@ gfx_imgstart:	equ	$FFFF805E 	; image buffer start address; same restrictions on 
 gfx_imgoffset:	equ	$FFFF8060 	; specifies an optional offset of up to 7 pixels on each axis, bits 0-2 horizontal, bits 3-5 vertical
 gfx_img_hsize:	equ	$FFFF8062 	; image buffer width in pixels, maximum 511 pixels
 gfx_img_vsize: 	equ	$FFFF8064 	; image buffer height in pixels, maximum 255 pixels
-gfx_tracetbl:	equ	$FFFF8066 	; start address of trace vector table;  same restrictions on location apply as with stampmaps (writing this also triggers the start of a graphics operation)
+gfx_tracetbl:	equ	$FFFF8066 	; start address of trace vector table, expressed as offset relative to start of 2M word RAM divided by 4;  same restrictions on location apply as with stampmaps (writing this also triggers the start of a graphics operation)
 
 ; Subcode registers; BIOS use only
 subcode_addr:	equ	$FFFF8068 	; subcode top address

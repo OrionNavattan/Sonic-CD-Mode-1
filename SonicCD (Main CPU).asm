@@ -170,54 +170,19 @@ MainLoop:
 		cmpi.b	#$FF,mcd_sub_flag-mcd_subcom_0(a3)	; is sub CPU OK?
 		beq.s	SubCrash1
 		bra.s 	MainLoop							; stay here forever
-
-	;	lea	-sizeof_Console_RAM(sp),sp
-	;	lea (sp),a3
-	;	jsr	(ErrorHandler_SetupVDP).l
-	;	jsr	(Error_InitConsole).l		; set up console
-
-;sizeof_TTZDriver:	equ		filesize("SNCBNK4B.BIN")
-
-	;	move.l #(sizeof_TTZDriver)/4-1,d0
-	;	move.l	d0,d1
-	;	lea	(wordram_2m),a0
-	;	lea TTZ_Driver(pc),a1
-
-	;.cmploop:
-	;	cmpm.b	(a0)+,(a1)+
-	;	bne.s	.fail
-
-	;	dbf	d0,.cmploop
-
-	;	Console.Write	"Success! Driver loaded from "
-	;	Console.Write	"disc matches copy in ROM!"
-
-	;	bra.w	Done
-
-	;.fail:
-
-	;	suba.l	#wordram_2m,a0
-	;	Console.Write	"Failure! Driver loaded from disc "
-	;	Console.Write	"does NOT match copy in ROM! "
-	;	Console.Write	"Mismatch at %<.l a0 hex> bytes "
-	;	Console.Write	"out of %<.w d1 hex> bytes total."
-
-;Done:
-;		bra.s *
-
 ; ===========================================================================
 
-;gmptr:		macro
-;		id_\1:	equ offset(*)-GameModeArray
-;		if narg=1
-;		bra.w	GM_\1
-;		else
-;		bra.w	GM_\2
-;		endc
-;		endm
+gmptr:		macro
+		id_\1:	equ offset(*)-GameModeArray
+		if narg=1
+		bra.w	GM_\1
+		else
+		bra.w	GM_\2
+		endc
+		endm
 
 
-;GameModeArray:
+GameModeArray:
 
 	;	gmptr	Sega			; 0
 	;	gmptr	Title			; 4

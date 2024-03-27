@@ -66,8 +66,8 @@ EntryPoint:
 		dbf	d5,.psg_loop				; repeat for all channels
 
 	;.find_bios:
-		btst	#console_mcd_bit,d6	; is there anything in the expansion slot?
-		bne.w	InitFailure1		; if not, branch
+		btst	#console_mcd_bit,d6					; is there anything in the expansion slot?
+		bne.w	InitFailure1						; if not, branch
 		cmp.l	cd_bios_signature-cd_bios_name(a4),d7	; is the "SEGA" signature present?
 		bne.w	InitFailure1					; if not, branch
 		cmpi.w	#"BR",cd_bios_sw_type-cd_bios_name(a4)		; is the "Boot ROM" software type present?
@@ -75,12 +75,12 @@ EntryPoint:
 
 		; Determine which MEGA CD device is attached.
 		movea.l	a0,a2				; a2 = index table of BIOS data
-		addq.w	#4,a0
-		movea.l a0,a1				; a1 = base address of index + 4 (to skip over payload address)
+		addq.w	#4,a0				; a0 = index table + 4 (to skip over payload address)
 		moveq	#(sizeof_MCDBIOSList/2)-1,d0
 		moveq	#id_MCDBIOS_JP1,d7		; first BIOS ID
 
 	.findloop:
+		movea.l a0,a1				; base address of index + 4
 		adda.w	(a2)+,a1			; a1 = pointer to BIOS data
 		movea.l	a4,a5				; a6 = BIOS name in bootrom
 
@@ -99,8 +99,7 @@ EntryPoint:
 		beq.s	.found				; branch if so
 
 	.nextBIOS:
-		addq.b	#1,d7				; increment BIOS ID
-		movea.l	a0,a1				; reset a1
+		addq.b	#2,d7				; increment BIOS ID
 		dbf	d0,.findloop			; loop until all BIOSes are checked
 
 	;.notfound:
@@ -183,11 +182,10 @@ EntryPoint:
 		move.b	d6,(a3)
 
 		lea	(program_ram).l,a1		; start of program RAM
-		move.b	(v_bios_id).w,d4	; get BIOS ID
-		add.w	d4,d4				; make index
+		move.b	(v_bios_id).w,d4	; get BIOS ID (d4 is already 0)
 		lea MCDBIOSList(pc),a0
-		move.w	-2(a0,d4.w),d1	; -2 since IDs start at 1
-		movea.l	(a0,d1.w),a0	; a0 = start of compressed BIOS payload
+		move.w	-2(a0,d4.w),d4	; -2 since IDs start at 2
+		movea.l	(a0,d4.w),a0	; a0 = start of compressed BIOS payload
 
 		bsr.w	KosDec					; decompress the sub CPU BIOS (uses a0, a1, a4, a5)
 		bsr.w	Decompress_SubCPUProgram	; decompress the sub CPU program
@@ -256,7 +254,7 @@ SetupValues:
 		arraysize SetupVDP
 
 		dc.l	vram_dma				; DMA fill VRAM
-		dc.w	(sizeof_ram/4)-1	; workram clear loop counter
+		dc.w	(sizeof_workram/4)-1	; workram clear loop counter
 		dc.w	vdp_auto_inc+2				; VDP increment
 		dc.l	vsram_write				; VSRAM write mode
 		dc.l	cram_write				; CRAM write mode
@@ -264,7 +262,7 @@ SetupValues:
 
 		dc.b	$9F,$BF,$DF,$FF				; PSG mute values (PSG 1 to 4)
 
-MCDBIOSList:	index offset(*),1
+MCDBIOSList:	index offset(*),2,2
 		ptr	MCDBIOS_JP1			; 1
 		ptr	MCDBIOS_US1			; 2
 		ptr	MCDBIOS_EU1			; 3
@@ -330,8 +328,8 @@ InitFailure3:
 
 InitFailure2:
 		addq.b	#2,d3		; 2 = unidentified sub CPU
-							; 0 = no sub CPU found
-InitFailure1:
+
+InitFailure1:				; 0 = no sub CPU found
 		disable_ints
 		lea	-sizeof_Console_RAM(sp),sp
 		lea (sp),a3
@@ -341,9 +339,9 @@ InitFailure1:
 		popr.w	d3
 
 		move.w	FailureText_Index(pc,d3.w),d3
-		lea FailureText_Index-6(pc,d3.w),a5		; a5 = start of data for failure message
-		move.w	(a5)+,d5				; d5 = loop counter
-		movem.w	(a5)+,d0/d1			; d0/d1 = starting x and y pos
+		lea FailureText_Index-4(pc,d3.w),a5		; a5 = start of data for failure message
+		moveq	#0,d0					; d0 = starting x pos
+		movem.w	(a5)+,d1/d5			; d1 = starting y pos; d5 = loop counter
 		jsr	(Console_SetPosAsXY).l		; set starting pos for message
 		moveq	#0,d4			; first line of message
 
@@ -367,8 +365,7 @@ FailureText_Index:	index offset(*),,2
 		ptr	SubCPU_Unresponsive_Index ; 4
 ; ===========================================================================
 
-		dc.w	(sizeof_SubCPU_NotFound_Index/2)-1
-		dc.w	0,9	; x pos, y pos
+		dc.w	9,(sizeof_SubCPU_NotFound_Index/2)-1	; y pos, loop counter
 SubCPU_NotFound_Index:	index offset(*),,2
 		ptr	.line1
 		ptr	.line2
@@ -390,8 +387,7 @@ SubCPU_NotFound_Index:	index offset(*),,2
 		even
 ; ===========================================================================
 
-		dc.w	(sizeof_SubCPU_NotIdentified_Index/2)-1
-		dc.w	0,9	; x pos, y pos
+		dc.w	9,(sizeof_SubCPU_NotIdentified_Index/2)-1	; y pos, loop counter
 SubCPU_NotIdentified_Index:	index offset(*),,2
 		ptr	.line1
 		ptr	.line2
@@ -413,8 +409,7 @@ SubCPU_NotIdentified_Index:	index offset(*),,2
 		even
 ; ===========================================================================
 
-		dc.w	(sizeof_SubCPU_Unresponsive_Index/2)-1
-		dc.w	0,10	; x pos, y pos
+		dc.w	10,(sizeof_SubCPU_Unresponsive_Index/2)-1	; y pos, loop counter
 SubCPU_Unresponsive_Index:	index offset(*),,2
 		ptr	.line1
 		ptr	.line2

@@ -182,7 +182,7 @@ tmss_reg:		equ $A14101				; bankswitch between cartridge and TMSS ROM
 workram_start:	equ $FFFF0000
 
 ; Memory sizes
-sizeof_ram:			equ $10000
+sizeof_workram:		equ $10000
 sizeof_vram:		equ $10000
 sizeof_vsram:		equ $50
 sizeof_z80_ram:		equ z80_ram_end-z80_ram			; $2000

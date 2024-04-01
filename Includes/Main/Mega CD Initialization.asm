@@ -263,14 +263,15 @@ SetupValues:
 		dc.b	$9F,$BF,$DF,$FF				; PSG mute values (PSG 1 to 4)
 
 MCDBIOSList:	index offset(*),2,2
-		ptr	MCDBIOS_JP1			; 1
-		ptr	MCDBIOS_US1			; 2
-		ptr	MCDBIOS_EU1			; 3
-		ptr	MCDBIOS_CD2			; 4
-		ptr	MCDBIOS_CDX			; 5
-		ptr	MCDBIOS_LaserActive	; 6
-		ptr	MCDBIOS_Wondermega1	; 7
-		ptr	MCDBIOS_Wondermega2	; 8
+		ptr	MCDBIOS_JP1			; 2
+		ptr	MCDBIOS_US1			; 4
+		ptr	MCDBIOS_EU1			; 6
+		ptr	MCDBIOS_CD2			; 8
+		ptr	MCDBIOS_CDX			; $A
+		ptr	MCDBIOS_LaserActive	; $C
+		ptr	MCDBIOS_Wondermega1	; $E
+		ptr	MCDBIOS_Wondermega2	; $10
+		ptr	MCDBIOS_Clownmdemu	; $12
 		arraysize MCDBIOSList
 
 MCDBIOS_JP1:
@@ -320,6 +321,12 @@ MCDBIOS_Wondermega2:
 		dc.b	"WONDERMEGA2 BOOTROM",0		; Victor WonderMega 2, JVC X'Eye
 		dc.b	0
 		even
+
+MCDBIOS_Clownmdemu:
+		dc.l	$416000
+		dc.b	"MEGA-CD BOOT ROM   CLOWNMDEMU",0	; Clownmdemu stub BIOS
+		dc.b	0
+		even
 ; ===========================================================================
 
 ; d3 is already 0
@@ -365,26 +372,26 @@ FailureText_Index:	index offset(*),,2
 		ptr	SubCPU_Unresponsive_Index ; 4
 ; ===========================================================================
 
-		dc.w	9,(sizeof_SubCPU_NotFound_Index/2)-1	; y pos, loop counter
+		dc.w	10,(sizeof_SubCPU_NotFound_Index/2)-1	; y pos, loop counter
 SubCPU_NotFound_Index:	index offset(*),,2
 		ptr	.line1
 		ptr	.line2
 		ptr	.line3
 		ptr	.line4
-		ptr	.line5
+	;	ptr	.line5
 		arraysize	SubCPU_NotFound_Index
 
 
-.line1:	dc.b	'     Sorry, this test requires the      ',0
+.line1:	dc.b	'    Sorry, this program requires the    ',0
 		even
-.line2:	dc.b	'    Mega CD addon or equivalent, or     ',0
+.line2:	dc.b	'  Mega CD/Sega CD addon or an emulator  ',0
 		even
-.line3:	dc.b	'       Genesis Plus GX, BlastEm,        ',0
+.line3:	dc.b	'    with Mega CD Mode 1 support and     ',0
 		even
-.line4:	dc.b	'      Mega EverDrive Pro or MegaSD      ',0
+.line4:	dc.b	'       a properly configured BIOS.      ',0
 		even
-.line5:	dc.b	'    with a properly configured BIOS.    ',0
-		even
+;.line5:	dc.b	'    configured BIOS.    ',0
+;		even
 ; ===========================================================================
 
 		dc.w	9,(sizeof_SubCPU_NotIdentified_Index/2)-1	; y pos, loop counter

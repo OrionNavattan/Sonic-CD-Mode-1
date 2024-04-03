@@ -481,31 +481,6 @@ FileMode_LoadFile:
 		bra.s	.done
 
 ; -------------------------------------------------------------------------
-; Common routine to begin reading disc sectors
-; -------------------------------------------------------------------------
-
-BeginSectorRead:
-		move.b	fe_cdcmode(a5),(cdc_mode).w	; set CDC device
-
-		lea	fe_sector(a5),a0			; get sector information
-		move.l	(a0),d0				; get sector frame (in BCD)
-		divu.w	#75,d0				; divide sector count by 75
-		swap	d0
-		ext.l	d0					; only need remainder
-		divu.w	#10,d0				; divide by 10
-		move.b	d0,d1
-		lsl.b	#4,d1				; multiply by 16
-		swap	d0
-		move.w	#0,ccr
-		abcd	d1,d0
-		move.b	d0,fe_sectorframe(a5)
-
-		move.w	#600,fe_waittime(a5)		; set wait timer
-
-		moveq	#ROMReadNum,d0			; start reading the sectors
-		jmp	(_CDBIOS).w
-
-; -------------------------------------------------------------------------
 ; Subroutine to read disc sectors and copy from CDC to destination
 ; -------------------------------------------------------------------------
 
@@ -513,9 +488,14 @@ ReadSectors:
 		popr.l	fe_returnaddr(a5)		; save return address
 		clr.w	fe_sectorsread(a5)		; reset sectors read count
 		move.w	#30,fe_retries(a5)		; set retry counter
+		move.b	fe_cdcmode(a5),(cdc_mode).w	; set CDC device
+
 
 .startread:
-		bsr.s	BeginSectorRead
+		move.w	#600,fe_waittime(a5)		; set wait timer
+		lea	fe_sector(a5),a0			; get sector information
+		moveq	#ROMReadNum,d0			; start reading the sectors
+		jsr	(_CDBIOS).w
 
 	.bookmark:
 		bsr.w	FileEngine_SuspendExecution		; set bookmark; continue at next VBlank
@@ -535,11 +515,7 @@ ReadSectors:
 .read:
 		move.w	#DecoderRead,d0			; prepare to read data
 		jsr	(_CDBIOS).w
-		bcs.s	.read_retry				; branch if data is not present
-		move.l	d0,fe_readtime(a5)		; get time of sector read
-		move.b	fe_sectorframe(a5),d0
-		cmp.b	fe_readframe(a5),d0		; does the read sector match the sector we want?
-		beq.s	.wait_data_set			; if so, branch
+		bcc.s	.wait_data_set				; branch if data is present
 
 	.read_retry:
 		subq.w	#1,fe_retries(a5)		; decrement retry counter
@@ -548,6 +524,7 @@ ReadSectors:
 ; ===========================================================================
 
 .wait_data_set:
+		move.l	d0,fe_readtime(a5)		; get time of sector read
 		move.w	#$800-1,d0			; wait for data set
 
 	.wait_loop:
@@ -565,26 +542,13 @@ ReadSectors:
 		movea.l	fe_readbuffer(a5),a0
 		lea	fe_readtime(a5),a1
 		jsr	(_CDBIOS).w
-		bcs.s	.copy_retry			; if it wasn't successful, branch
-
-		move.b	fe_sectorframe(a5),d0		; does the read sector match the sector we want?
-		cmp.b	fe_readframe(a5),d0
-		beq.s	.incsectorframe			; if so, branch
+		bcc.s	.finish_sector_read			; if it wasn't successful, branch
 
 	.copy_retry:
 		subq.w	#1,fe_retries(a5)		; decrement retry counter
 		bge.s	.startread			; if we can still retry, do it
 		bra.s	.read_failed			; give up
 ; ===========================================================================
-
-.incsectorframe:
-		move.w	#0,ccr				; next sector frame
-		moveq	#1,d1
-		abcd	d1,d0
-		move.b	d0,fe_sectorframe(a5)
-		cmpi.b	#$75,fe_sectorframe(a5)		; should we wrap it?
-		bcs.s	.finish_sector_read		; if not, branch
-		clr.b	fe_sectorframe(a5)		; if so, wrap it
 
 	.finish_sector_read:
 		move.w	#DecoderAck,d0			; let decoder know read is finished
@@ -647,6 +611,32 @@ FileMode_LoadFMV:
 		bra.s	.done
 
 ; -------------------------------------------------------------------------
+; Common routine to begin reading disc sectors
+; -------------------------------------------------------------------------
+
+BeginSectorRead:
+		move.b	fe_cdcmode(a5),(cdc_mode).w	; set CDC device
+
+		lea	fe_sector(a5),a0			; get sector information
+		move.l	(a0),d0				; get sector frame (in BCD)
+		divu.w	#75,d0				; divide sector count by 75
+		swap	d0
+		ext.l	d0					; only need remainder
+		divu.w	#10,d0				; divide by 10
+		move.b	d0,d1
+		lsl.b	#4,d1				; multiply by 16
+		swap	d0
+		move.w	#0,ccr
+		abcd	d1,d0
+		move.b	d0,fe_sectorframe(a5)
+
+		move.w	#600,fe_waittime(a5)		; set wait timer
+
+		moveq	#ROMReadNum,d0			; start reading the sectors
+		jmp	(_CDBIOS).w
+
+
+; -------------------------------------------------------------------------
 ; Read sound FMV file data from CD
 ; -------------------------------------------------------------------------
 
@@ -656,7 +646,7 @@ ReadFMVSectors:
 		move.w	#10,fe_retries(a5)		; set retry counter
 
 .startread:
-		bsr.w	BeginSectorRead
+		bsr.s	BeginSectorRead
 
 	.bookmark:
 		bsr.w	FileEngine_SuspendExecution		; set bookmark; continue at next VBlank

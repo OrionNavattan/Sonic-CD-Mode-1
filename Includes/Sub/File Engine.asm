@@ -456,15 +456,16 @@ FileMode_LoadFile:
 		move.l	file_length(a0),d1		; get file size
 		move.l	d1,fe_filesize(a5)
 
-		move.l	#1,fe_sectorcount(a5)	; 1 sector minimum
+		moveq	#1,d0				; 1 sector minimum
 
 	.get_sectors:
 		subi.l	#sizeof_sector,d1	; subtract size of sector
 		ble.s	.read				; branch if we underflowed to negative or reached zero
-		addq.l	#1,fe_sectorcount(a5)	; increment sector count
+		addq.l	#1,d0			; increment sector count
 		bra.s	.get_sectors
 
 	.read:
+		move.l	d0,fe_sectorcount(a5)	; set sector count
 		bsr.s	ReadSectors			; read file from disc
 		cmpi.w	#fstatus_ok,fe_status(a5)		; was the operation a success?
 		beq.s	.done				; if so, branch
@@ -845,7 +846,7 @@ ReadFMVSectors:
 		bgt.w	.startread			; if there are still sectors to read, branch
 		move.w	#fstatus_fmvfail,fe_status(a5)	; mark as failed
 		bra.w	.done
-    
+
 ; -------------------------------------------------------------------------
 ; "Load mute FMV" operation
 ; -------------------------------------------------------------------------

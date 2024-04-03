@@ -100,12 +100,11 @@ Header:
 ;    endc
 Checksum:
 		dc.w $0000			; Checksum
-		dc.b 'JC              ' ; I/O Support : joypad and CD-ROM
+		dc.b 'JC              '				; I/O support (joypad and Mega CD Mode 1)
 ROMStartLoc:
 		dc.l Rom_Start			; ROM Start
 ROMEndLoc:
-		dc.l $FFFFF
-					; ROM End
+		dc.l $FFFFF 		; ROM End
 RAMStartLoc:
 		dc.l $FF0000		; RAM Start
 RAMEndLoc:

@@ -1,3 +1,6 @@
+pcm_waveram:	equ $FF2001
+
+
 ; -------------------------------------------------------------------------
 ; Subroutine to get the file name for a file ID
 
@@ -335,10 +338,10 @@ FileEngine_SuspendExecution:
 ; -------------------------------------------------------------------------
 
 FileMode_GetDiscHeader:
-		move.b	#cdc_dest_sub,fe_cdcmode(a5)				; set CDC device to sub CPU
+		move.b	#cdc_dest_prgram,fe_cdcmode(a5)				; set CDC device to program RAM DMA
 		clr.l	fe_sector(a5)					; read sector 0
 		move.l	#1,fe_sectorcount(a5)			; 1 sector
-		move.l	#FileVars+fe_dirreadbuf,fe_readbuffer(a5)	; read buffer (will be overwritten later)
+		move.l	#(FileVars+fe_dirreadbuf)>>3,fe_readbuffer(a5)	; read buffer (will be overwritten later)
 
 		bsr.w	ReadSectors		; read header sector
 
@@ -355,10 +358,10 @@ FileMode_GetDiscHeader:
 ; -------------------------------------------------------------------------
 
 FileMode_LoadFilesystem:
-		move.b	#cdc_dest_sub,fe_cdcmode(a5)			; set CDC device to sub CPU
+		move.b	#cdc_dest_prgram,fe_cdcmode(a5)			; set CDC device to sub CPU
 		move.l	#iso9660_pvd_sector,fe_sector(a5)		; read sector $10 (primary volume descriptor)
 		move.l	#1,fe_sectorcount(a5)		; read 1 sector
-		move.l	#FileVars+fe_dirreadbuf,fe_readbuffer(a5)	; read buffer
+		move.l	#(FileVars+fe_dirreadbuf)>>3,fe_readbuffer(a5)	; read buffer
 		bsr.w	ReadSectors			; read volume descriptor sector
 		cmpi.w	#fstatus_readfail,fe_status(a5)	; was the operation a failure?
 		beq.w	.failed				; if so, branch
@@ -379,7 +382,7 @@ FileMode_LoadFilesystem:
 
 .get_directory:
 		move.l	#1,fe_sectorcount(a5)		; read 1 sector
-		move.l	#FileVars+fe_dirreadbuf,fe_readbuffer(a5)	; read buffer
+		move.l	#(FileVars+fe_dirreadbuf)>>3,fe_readbuffer(a5)	; read buffer
 		bsr.w	ReadSectors			; read sector of root directory
 		cmpi.w	#fstatus_readfail,fe_status(a5)	; was the operation a failure?
 		beq.w	.failed				; if so, branch
@@ -447,10 +450,36 @@ FileMode_LoadFilesystem:
 ; -------------------------------------------------------------------------
 
 FileMode_LoadFile:
-		move.b	#cdc_dest_sub,fe_cdcmode(a5)			; set CDC device to "Sub CPU"
 		lea	fe_filename(a5),a0
 		bsr.w	FileFunc_FindFile			; find file
-		bcs.w	.not_found			; branch if not found
+		bcs.s	.not_found			; branch if not found
+
+		move.l	fe_readbuffer(a5),d0	; d0 = destination address
+		cmpi.l	#program_ram_end,d0		; is the destination program ram?
+		bcs.s	.prgram					; branch if so
+
+		cmpi.l	#pcm_waveram,d0		; is the destination waveram?
+		bcc.s	.waveram			; branch if so
+
+	;.wordram:
+		move.b	#cdc_dest_wordram,d1	; set CDC mode to wordram DMA
+		subi.l	#wordram_2M,d0		; d0 = offset from start of wordram
+		bra.s	.get_sectors
+; ===========================================================================
+
+	.waveram:
+		move.b	#cdc_dest_pcm,d1	; set CDC mode to waveram DMA
+		subi.l	#pcm_waveram,d0		; d0 = offset from start of waveram
+		bra.s	.get_sectors
+; ===========================================================================
+
+	.prgram:
+		move.b	#cdc_dest_prgram,d1		; set CDC mode to program ram DMA
+
+.get_sectors:
+		lsr.l	#3,d0					; divide offset by 8 to get DMA destination
+		move.l	d0,fe_readbuffer(a5)	; store destination
+		move.b	d1,fe_cdcmode(a5)		; store CDC mode
 
 		move.l	file_sector(a0),fe_sector(a5)	; get file sector
 		move.l	file_length(a0),d1		; get file size
@@ -458,11 +487,11 @@ FileMode_LoadFile:
 
 		moveq	#1,d0				; 1 sector minimum
 
-	.get_sectors:
-		subi.l	#sizeof_sector,d1	; subtract size of sector
-		ble.s	.read				; branch if we underflowed to negative or reached zero
+	.sector_loop:
+		subi.l	#sizeof_sector,d1	; subtract size of sector from filesize
+		ble.s	.read				; branch if we underflowed or reached zero
 		addq.l	#1,d0			; increment sector count
-		bra.s	.get_sectors
+		bra.s	.sector_loop
 
 	.read:
 		move.l	d0,fe_sectorcount(a5)	; set sector count
@@ -489,7 +518,7 @@ ReadSectors:
 		clr.w	fe_sectorsread(a5)		; reset sectors read count
 		move.w	#30,fe_retries(a5)		; set retry counter
 		move.b	fe_cdcmode(a5),(cdc_mode).w	; set CDC device
-
+		move.w	fe_readbuffer+2(a5),(cdc_dma_dest).w	; set DMA destination
 
 .startread:
 		move.w	#600,fe_waittime(a5)		; set wait timer
@@ -509,69 +538,35 @@ ReadSectors:
 		bge.s	.bookmark			; if we are still waiting, branch
 		subq.w	#1,fe_retries(a5)		; if we waited too long, decrement retry counter
 		bge.s	.startread			; if we can still retry, do it
-		bra.w	.read_failed			; give up
+
+	;.failed:
+		move.w	#fstatus_readfail,fe_status(a5)	; mark as failed
+		bra.s	.done
 ; ===========================================================================
 
 .read:
-		move.w	#DecoderRead,d0			; prepare to read data
+		move.w	#DecoderRead,d0			; DMA to destination
 		jsr	(_CDBIOS).w
-		bcc.s	.wait_data_set				; branch if data is present
 
-	.read_retry:
-		subq.w	#1,fe_retries(a5)		; decrement retry counter
-		bge.s	.startread			; if we can still retry, do it
-		bra.w	.read_failed			; give up
-; ===========================================================================
+	.waitDMA:
+		tst.b	(cdc_mode).w		; has DMA finished? (checking cdc_endtrans_bit)
+		bpl.s	.waitDMA			; wait if not
 
-.wait_data_set:
-		move.l	d0,fe_readtime(a5)		; get time of sector read
-		move.w	#$800-1,d0			; wait for data set
-
-	.wait_loop:
-		btst	#cdc_dataready_bit,(cdc_mode).w
-		dbne	d0,.wait_loop		; loop until ready or until it takes too long
-		bne.s	.transferdata			; if the data is ready to be transfered, branch
-
-		subq.w	#1,fe_retries(a5)		; decrement retry counter
-		bge.s	.startread			; if we can still retry, do it
-		bra.s	.read_failed			; give up
-; ===========================================================================
-
-.transferdata:
-		move.w	#DecoderTransfer,d0			; copy data to destination
-		movea.l	fe_readbuffer(a5),a0
-		lea	fe_readtime(a5),a1
-		jsr	(_CDBIOS).w
-		bcc.s	.finish_sector_read			; if it wasn't successful, branch
-
-	.copy_retry:
-		subq.w	#1,fe_retries(a5)		; decrement retry counter
-		bge.s	.startread			; if we can still retry, do it
-		bra.s	.read_failed			; give up
-; ===========================================================================
-
-	.finish_sector_read:
 		move.w	#DecoderAck,d0			; let decoder know read is finished
 		jsr	(_CDBIOS).w
 
 		move.w	#6,fe_waittime(a5)		; set new wait time
 		move.w	#30,fe_retries(a5)		; set new retry counter
-		addi.l	#$800,fe_readbuffer(a5)		; advance read buffer
 		addq.w	#1,fe_sectorsread(a5)		; increment sectors read counter
 		addq.l	#1,fe_sector(a5)			; next sector
 		subq.l	#1,fe_sectorcount(a5)		; decrement sectors to read
 		bgt.w	.checkready			; if there are still sectors to read, branch
-		move.w	#fstatus_ok,fe_status(a5)		; mark as successful
+		move.w	#fstatus_ok,fe_status(a5)		; we are done, mark as successful
 
 	.done:
 		pushr.l	fe_returnaddr(a5)		; get return address
 		move.w	#DecoderStop,d0			; stop CDC until next time
 		jmp	(_CDBIOS).w
-; ===========================================================================
-
-.read_failed:
-		move.w	#fstatus_readfail,fe_status(a5)	; mark as failed
-		bra.s	.done
 
 ; -------------------------------------------------------------------------
 ; "Load FMV" operation

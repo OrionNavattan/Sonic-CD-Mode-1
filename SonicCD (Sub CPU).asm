@@ -19,6 +19,7 @@
 		include "Mega CD Sub CPU.asm"
 		include "includes/Debugger Macros and Common Defs.asm"
 		include "Common Macros.asm"
+		include	"Macros (Sub CPU).asm"
 		include "Constants (Sub CPU).asm"
 		include "RAM Addresses (Sub CPU).asm"
 	;	include "includes/Sub CPU Commands.asm"
@@ -83,16 +84,16 @@ SetupValues:
 		dc.l GFXInt			; GFX int address
 		dc.l MainCPUError	; main CPU error vector
 		dc.l RunPCMDriver	; timer int address
-		dc.b 1,$FF			; DriveInit parameters
+		dc.b 1,$FF			; DriveInit parameters (all tracks)
 		dc.b 255			; timer interrupt interval
 
 DiscType:
-		dc.b 	'SEGADISCSYSTEM  '
+		dc.b 	'SEGADISCSYSTEM'
 	;	dc.b	'SEGADATADISC    '
 		arraysize	DiscType
 HeaderTitle:
-		dc.b	'SONIC THE HEDGEHOG-CD                           '
-	;	dc.b 	'SONIC THE HEDGEHOG CD MODE 1 DATA DISC          '
+		dc.b	'SONIC THE HEDGEHOG-CD'
+	;	dc.b 	'SONIC THE HEDGEHOG-CD MODE 1 DATA DISC          '
 		arraysize	HeaderTitle
 		even
 ; ===========================================================================
@@ -190,6 +191,9 @@ WaitReady:
 		tst.b	(mcd_maincom_0).w	; is main CPU ready to send commands?
 		bne.s	.waitmainready		; branch if not
 
+		cmpi.b	#2,(v_disc_status).w
+		bne.s	.done
+
 		lea	File_R4PCM(pc),a0		; load TTZ's PCM driver from the disc
 		lea	(PCMDriver).l,a1		; (driver is hardcoded to run at $40000)
 		jsr (LoadFile).w
@@ -233,6 +237,7 @@ RunPCMDriver:
 	.done:
 		rte
 
+		align 8
 FileVars:
 		dcb.b	sizeof_FileVars,0
 		even

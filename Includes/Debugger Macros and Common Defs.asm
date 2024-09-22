@@ -5,27 +5,6 @@
 ; Modified 2023 Orion Navattan
 ; ---------------------------------------------------------------
 
-; Debug Features
-; Set to 1 to enable the use of debug assertions and the KDebug interface
-DebugFeatures: 		equ 1
-
-; Enable debugger extensions
-; Pressing A/B/C on the exception screen can open other debuggers
-; Pressing Start or unmapped button returns to the exception
-DebuggerExtensions:	equ 1
-
-; Use compact 24-bit offsets instead of 32-bit ones
-; This will display shorter offests next to the symbols in the exception screen header
-; M68K bus is limited to 24 bits anyways, so not displaying unused bits saves screen space
-UseCompactOffsets:	equ 1
-
-; Enable symbol table support for the sub CPU program
-; This requires the use of wordram for decompressing the tables for both CPUs when an exception occurs
-; IF YOU DISABLE THIS, YOU MUST COMMENT OUT OR REMOVE THE FOLLOWING LINE
-; IN THE BUILD SCRIPT FOR MAIN CPU SYMBOLS TO WORK CORRECTLY:
-; "mdcomp/koscmp.exe"	"Main CPU Symbols.bin" "Main CPU Symbols.kos"
-SubCPUSymbolSupport:	equ 1
-
 ; ---------------------------------------------------------------
 ; Constants
 ; ---------------------------------------------------------------
@@ -117,36 +96,37 @@ _eh_align_offset:	equ	1<<align_offset_bit
 _eh_default			equ	0
 
 ; ---------------------------------------------------------------
-; Disable interrupts
-; ---------------------------------------------------------------
-
-	if ~def(disable_ints)
-disable_ints: macro
-		move #$2700,sr
-		endm
-	endc
-
-; ---------------------------------------------------------------
 ; Create assertions for debugging
 
 ; EXAMPLES:
-;	assert.b	d0, eq, #1		; d0 must be $01, or else crash!
-;	assert.w	d5, eq			; d5 must be $0000!
-;	assert.l	a1, hi, a0		; asert a1 > a0, or else crash!
-;	assert.b	MemFlag, ne		; MemFlag must be non-zero!
+;	assert.b	d0, eq, #1		; d0 must be $01, or else crash
+;	assert.w	d5, pl			; d5 must be positive
+;	assert.l	a1, hi, a0		; asert a1 > a0, or else crash
+;	assert.b	(MemFlag).w, ne	; MemFlag must be set (non-zero)
+;	assert.l	a0, eq, #Obj_Player, MyObjectsDebugger
 ; ---------------------------------------------------------------
 
-assert:	macro	src,cond,dest
-	if DebugFeatures
-	if narg=3
-		cmp.\0	\dest,\src
-	else narg=2
+assert:	macro	src,cond,dest,console_program
+		pushr.w	sr
+	if strlen("\dest")
+		cmp.\0	\dest, \src
+	else
 		tst.\0	\src
 	endc
-		b\cond\.s	.skip\@
-		RaiseError	"Assertion failed:%<endl>\src \cond \dest"
-	.skip\@:
+	pusho
+	opt l.		; ensure compatibilty in projects that use a different local label symbol
+		b\cond\	.skip\@
+	popo
+	if strlen("\dest")
+		RaiseError	"Assertion failed:%<endl,pal2>> assert.\0 %<pal0>\src,%<pal2>\cond%<pal0>,\dest%<endl,pal1>Got: %<.\0 \src>", \console_program
+	else
+		RaiseError	"Assertion failed:%<endl,pal2>> assert.\0 %<pal0>\src,%<pal2>\cond%<endl,pal1>Got: %<.\0 \src>", \console_program
 	endc
+	pusho
+	opt l.		; ensure compatibilty in projects that use a different local label symbol
+	.skip\@:
+	popo
+	popr.w	sr
 	endm
 
 ; ---------------------------------------------------------------
@@ -168,14 +148,10 @@ RaiseError: macro	string,console_program,opts
 	if strlen("\console_program")&def(MainCPU)			; if console program offset is specified ...
 		dc.b	\opts+_eh_enter_console|(((*&1)^1)*_eh_align_offset)	; add flag "_eh_align_offset" if the next byte is at odd offset ...
 		even															; ... to tell Error handler to skip this byte, so it'll jump to ...
-		if DebuggerExtensions
-			jsr	\console_program										; ... an aligned "jsr" instruction that calls console program itself
-			jmp	ErrorHandler_PagesController
-		else
-			jmp	\console_program										; ... an aligned "jmp" instruction that calls console program itself
-		endc
+		jsr	\console_program										; ... an aligned "jsr" instruction that calls console program itself
+		jmp	ErrorHandler_PagesController
 	else
-		if DebuggerExtensions&def(MainCPU)
+		if def(MainCPU)
 			dc.b	\opts+_eh_return|(((*&1)^1)*_eh_align_offset)			; add flag "_eh_align_offset" if the next byte is at odd offset ...
 			even															; ... to tell Error handler to skip this byte, so it'll jump to ...
 			jmp	ErrorHandler_PagesController
@@ -204,6 +180,8 @@ Console: macro
 
 	if strcmp("\0","write")|strcmp("\0","writeline")|strcmp("\0","Write")|strcmp("\0","WriteLine")
 		move.w	sr,-(sp)
+		pusho
+		opt l.		; ensure compatibilty in projects that use a different local label symbol
 		__FSTRING_GenerateArgumentsCode \1
 
 		; If we have any arguments in string, use formatted string function ...
@@ -233,6 +211,7 @@ Console: macro
 		__FSTRING_GenerateDecodedString \1
 		even
 	.instr_end\@:
+		popo
 
 	elseif strcmp("\0","run")|strcmp("\0","Run")
 		jsr	ErrorHandler_ConsoleOnly
@@ -250,6 +229,8 @@ Console: macro
 		move.w	(sp)+,sr
 
 	elseif strcmp("\0","sleep")|strcmp("\0","Sleep")
+		pusho
+		opt l.		; ensure compatibilty in projects that use a different local label symbol
 		move.w	sr,-(sp)
 		move.w	d0,-(sp)
 		move.l	a0,-(sp)
@@ -264,6 +245,7 @@ Console: macro
 		move.l	(sp)+,a0
 		move.w	(sp)+,d0
 		move.w	(sp)+,sr
+		popo
 
 	elseif strcmp("\0","setxy")|strcmp("\0","SetXY")
 		move.w	sr,-(sp)
@@ -291,11 +273,13 @@ Console: macro
 ; ---------------------------------------------------------------
 
 KDebug: macro
-	if DebugFeatures
 	if strcmp("\0","write")|strcmp("\0","writeline")|strcmp("\0","Write")|strcmp("\0","WriteLine")
 		move.w	sr,-(sp)
 
 		__FSTRING_GenerateArgumentsCode \1
+
+		pusho
+		opt l.		; ensure compatibilty in projects that use a different local label symbol
 
 		; If we have any arguments in string, use formatted string function ...
 		if (__sp>0)
@@ -323,6 +307,7 @@ KDebug: macro
 		__FSTRING_GenerateDecodedString \1
 		even
 	.instr_end\@:
+		popo
 
 	elseif strcmp("\0","breakline")|strcmp("\0","BreakLine")
 		move.w	sr,-(sp)
@@ -348,7 +333,6 @@ KDebug: macro
 		inform	2,"""\0"" isn't a member of ""KDebug"""
 
 	endc
-	endc
 	endm
 
 
@@ -356,9 +340,9 @@ KDebug: macro
 
 __ErrorMessage:	macro	string,opts
 		__FSTRING_GenerateArgumentsCode \string
-		jsr	ErrorHandler
+		jsr	ErrorHandler(pc)
 		__FSTRING_GenerateDecodedString \string
-		if DebuggerExtensions&def(MainCPU)
+		if def(MainCPU)
 			dc.b	\opts+_eh_return|(((*&1)^1)*_eh_align_offset)	; add flag "_eh_align_offset" if the next byte is at odd offset ...
 			even													; ... to tell Error handler to skip this byte, so it'll jump to ...
 			jmp	ErrorHandler_PagesController	; ... extensions controller

@@ -47,7 +47,6 @@ ErrorExcept:
 DMAQueueOverflow:
 	__ErrorMessage "MAIN CPU: DMA QUEUE OVERFLOW", _eh_show_sr_usp
 
-
 ; ----------------------------------------------------------------------------
 ; Constants
 ; ----------------------------------------------------------------------------
@@ -59,7 +58,6 @@ VRAM_PlaneB: 	equ		VRAM_PlaneA
 VRAM_ErrorScreen:	equ		VRAM_PlaneA
 VRAM_DebuggerPage:	equ		$C000
 
-
 _white:			equ 	0
 _yellow: 		equ 	1<<13
 _blue:			equ 	2<<13
@@ -70,59 +68,6 @@ sizeof_dumpedregs:		equ 4*(8+7)	; $3C
 initial_sp:				equ 	0 ; location of initial stack pointer value
 hblank_vector:			equ 	$70
 vblank_vector:			equ		$78
-
-; --------------------------------------------------------------------------
-; VDP colors
-; --------------------------------------------------------------------------
-
-cWhite:	equ $EEE
-cBlack:	equ 0
-
-; --------------------------------------------------------------------------
-; VDP tile settings
-; --------------------------------------------------------------------------
-
-tile_xflip_bit:	equ 3
-tile_yflip_bit:	equ 4
-tile_pal12_bit:	equ 5
-tile_pal34_bit:	equ 6
-tile_hi_bit:	equ 7
-
-tile_xflip:	equ (1<<tile_xflip_bit)<<8		; $800
-tile_yflip:	equ (1<<tile_yflip_bit)<<8		; $1000
-tile_line0:	equ (0<<tile_xflip_bit)<<8		; 0
-tile_line1:	equ (1<<tile_pal12_bit)<<8		; $2000
-tile_line2:	equ (1<<tile_pal34_bit)<<8		; $4000
-tile_line3:	equ ((1<<tile_pal34_bit)|(1<<tile_pal12_bit))<<8 ; $6000
-tile_hi:	equ (1<<tile_hi_bit)<<8			; $8000
-
-tile_palette:	equ tile_pal4				; $6000
-tile_settings:	equ	tile_xflip|tile_yflip|tile_palette|tile_hi ; $F800
-tile_vram:		equ (~tile_settings)&$FFFF	; $7FF
-tile_draw:		equ	(~tile_hi)&$FFFF	; $7FFF
-
-; --------------------------------------------------------------------------
-; Joypad input
-; --------------------------------------------------------------------------
-
-bitStart:	equ 7
-bitA:		equ 6
-bitC:		equ 5
-bitB:		equ 4
-bitR:		equ 3
-bitL:		equ 2
-bitDn:		equ 1
-bitUp:		equ 0
-btnStart:	equ 1<<bitStart					; Start button	($80)
-btnA:		equ 1<<bitA					; A		($40)
-btnC:		equ 1<<bitC					; C		($20)
-btnB:		equ 1<<bitB					; B		($10)
-btnR:		equ 1<<bitR					; Right		($08)
-btnL:		equ 1<<bitL					; Left		($04)
-btnDn:		equ 1<<bitDn					; Down		($02)
-btnUp:		equ 1<<bitUp					; Up		($01)
-btnDir:		equ btnL+btnR+btnDn+btnUp			; Any direction	($0F)
-btnABC:		equ btnA+btnB+btnC				; A, B or C	($70)
 
 ; ----------------------------------------------------------------------------
 ; Console RAM
@@ -412,7 +357,10 @@ KDebug_FlushBuffer:
 		beq.s	.write_buffer_done		; if null-terminator, branch
 		subi.b	#endl,d7				; is flag "new line"?
 		beq.s	.write_buffer			; if yes, branch
-		bra.s	.write_buffer_next		; otherwise, skip writing
+		cmp.b	#setw-endl,d7		; is it a flag without arguments?
+		blt.s	.write_buffer_next		; if yes, only skip the flag itself
+		addq.w	#1,a0					; otherwise, skip argument as well
+		bra.s	.write_buffer_next
 ; ===========================================================================
 
 	.write_buffer_done:
@@ -458,9 +406,12 @@ KDebug_Write:
 		move.b	(a0)+,d7
 		bgt.s	.write_buffer			; if not null-terminator or flag, branch
 		beq.s	.write_buffer_done		; if null-terminator, branch
-		sub.b	#endl,d7				; is flag "new line"?
+		subi.b	#endl,d7				; is flag "new line"?
 		beq.s	.write_buffer			; if yes, branch
-		bra.s	.write_buffer_next		; otherwise, skip writing
+		cmp.b	#setw-endl,d7		; is it a flag without arguments?
+		blt.s	.write_buffer_next		; if yes, only skip the flag itself
+		addq.w	#1,a0					; otherwise, skip argument as well
+		bra.s	.write_buffer_next
 ; ===========================================================================
 
 	.write_buffer_done:
@@ -619,6 +570,7 @@ ErrorHandler_ExtraDebuggerList:
 		dc.l	0	; for button C (not B)
 		dc.l	Debugger_Backtrace	; for button B (not C)
 
+
 ; ----------------------------------------------------------------------------
 ; Main CPU handler for sub CPU exceptions. Entered by means of one of the trap
 ; vectors when it detects that the sub CPU has crashed.
@@ -640,8 +592,6 @@ ErrorHandler_ExtraDebuggerList:
 
 SubCPUError:
 		disable_ints			; disable interrupts for good
-
-	;	KDebug.WriteLine "Entered Sub CPU Error Handler..."
 
 		st.b	(mcd_main_flag).l	; let sub CPU know we've noticed
 
@@ -678,6 +628,7 @@ SubCPUError:
 		lea (wordram_2M).l,a1
 
 		jsr	(KosDec).w	; decompress the sub CPU's symbol table
+
 
 		; ----------------
 		; Screen header
@@ -863,6 +814,9 @@ SubCPUError:
 
 ErrorHandler:
 		disable_ints						; disable interrupts for good
+
+	;	KDebug.WriteLine "Entered Main CPU Error Handler..."
+
 		st.b	(mcd_main_flag).l			; let sub CPU know we've crashed
 
 	.waitsub:
@@ -1507,7 +1461,6 @@ Art1bpp_Font_Start:
 
 GetSymbolByOffset:
 		lea	(SymbolData).l,a1
-
 		cmpi.w	#_ValidHeader,(a1)+	; verify header
 		bne.s	.return_error
 
@@ -1621,11 +1574,7 @@ GetSymbolByOffset:
 ; ----------------------------------------------------------------------------
 
 DecodeSymbol:
-	if SubCPUSymbolSupport
 		lea	(SymbolData).l,a3
-	else
-		lea	SymbolData(pc),a3
-	endc
 		cmpi.w	#_ValidHeader,(a3)+			; verify the header
 		bne.s	.return_cc
 		adda.w	(a3),a3						; a3 = Huffman code table
@@ -1962,7 +1911,7 @@ FormatDec_Cont:
 		neg.w	d2								; d2 = digit
 		or.b	d2,d0							; have we met non-zero digit yet?
 		beq.s	.next_digit						; if not, branch
-		add.b	#'0',d2
+		addi.b	#'0',d2
 		move.b	d2,(a0)+
 
 		dbf	d7,.next_digit
@@ -2188,7 +2137,7 @@ FormatString:
 ; ===========================================================================
 
 	.quit:
-		subq.w	#1,a0		; because D7 wasn't decremented?
+		subq.w	#1,a0		; set pointer to null character
 		jsr	(a4)							; call flush buffer function
 		popr.l	d0-d4/a3
 		rts
@@ -2276,9 +2225,9 @@ FormatString_CodeHandlers:
 		move.l	(a2)+,d1						; $08 :$0C	; code 4 : ## invalid ##: displays word, but loads longword
 		jmp	(a3)							; $0A :$0E	; code 5 : ## invalid ##: displays garbage word
 ; ===========================================================================
-		; codes F0..FF : Drawing command, one-byte argument (ignore)
-		addq.w	#1,a0							; $0C :$00	; code 6 : ## invalid ##: restores control character and puts another one
-		bra.s	.after_restore_char2			; $0E :$02	; code 7 : ## invalid ##: does nothing
+		; codes F0..FF : Drawing command, one-byte argument (ignore, cut early if no enough space to fit argument)
+		subq.w	#2,d7							; $0C :$00	; code 6 : ## invalid ##: restores 2 control characters if enough space
+		bra.s	.restore_two_characters			; $0E :$02	; code 7 : ## invalid ##: restores 2 control characters, but check is broken
 ; ===========================================================================
 		addq.w	#8,a3							; $10		; code 8 : Display signed byte
 		move.w	(a2)+,d1						; $12		; code 9 : Display signed word
@@ -2306,16 +2255,21 @@ FormatString_CodeHandlers:
 		jmp	(a3)							; draw the actual value using an appropriate handler
 ; ===========================================================================
 
-.after_restore_char2:
-		dbf	d7,.after_restore_char3
-		jsr	(a4)
-		bcs.s	.return2
-
-.after_restore_char3:
-		move.b	(a1)+,(a0)+
-
 .after_restore_char:
 		dbf	d7,.return2
+		jmp	(a4)
+; ===========================================================================
+
+.restore_two_characters:
+		bcs.s	.flush_buffer_early				; if we had less than 2 characters remaining in buffer, cut it early: we'll fit it in the next buffer instead
+		addq.w	#1,a0							; restore control character
+		move.b	(a1)+,(a0)+					; store argument (next byte)
+		rts										; return carry=0
+; ===========================================================================
+
+.flush_buffer_early:
+		addq.w	#2,d7							; don't store last 2 characters: we won't fit them
+		subq.w	#1,a1							; rewind source string to fetch flag again
 		jmp	(a4)
 
 ; ===========================================================================
@@ -2633,7 +2587,7 @@ Console_Write:
 
 	; Process drawing flag
 .flag:
-		andi.w	#$1E,d1					; d2 = $00, $02, $04, $06, $08, $0A, $0C, $0E, $10, $12, $14, $16, $18, $1A, $1C, $1E
+		andi.w	#$1E,d1					; d1 = $00, $02, $04, $06, $08, $0A, $0C, $0E, $10, $12, $14, $16, $18, $1A, $1C, $1E
 		jmp	.command_handlers(pc,d1.w)
 ; ===========================================================================
 
@@ -2686,24 +2640,24 @@ Console_Write:
 ; ===========================================================================
 
 .set_palette_line_0:
-		andi.w	#$7FF,d4
+		andi.w	#~(tile_palette),d4	; clear palette bits (resets to line 0)
 		bra.s	.nextchar
 ; ===========================================================================
 
 .set_palette_line_1:
-		andi.w	#$7FF,d4
-		ori.w	#$2000,d4
+		andi.w	#~(tile_palette),d4	; clear palette bits
+		ori.w	#tile_line1,d4	; set palette bits to %01 (line 1)
 		bra.s	.nextchar
 ; ===========================================================================
 
 .set_palette_line_2:
-		andi.w	#$7FF,d4
-		ori.w	#$4000,d4
+		andi.w	#~(tile_palette),d4	; clear palette bits (resets to line 0)
+		ori.w	#tile_line2,d4	; set palette bits to %10 (line 2)
 		bra.s	.nextchar
 ; ===========================================================================
 
 .set_palette_line_3:
-		ori.w	#$6000,d4
+		ori.w	#tile_line3,d4	; set palette bits to %11 (line 3)
 		bra.s	.nextchar
 ; ===========================================================================
 

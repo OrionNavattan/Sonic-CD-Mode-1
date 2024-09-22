@@ -385,10 +385,10 @@ MusicScanOff:		equ	7	; MSCSCANOFF: cancel fast forward or rewind and return to n
 MusicPlay:			equ	$11	; MSCPLAY; play CD audio starting from a designated track and continuing through entire disc
 MusicPlayOnce:		equ	$12	; MSCPLAY1; play a CD track once
 MusicPlayRepeat:	equ	$13	; MSCPLAYR:	play a CD track on loop
-MusicPlayAtTime:	equ	$14	; MSCPLAYT;	queue a CD track and play it at a designated time
-MusicSeek:			equ	$15	; MSCSEEK; stop CD playback upon reaching a specific track
-MusicSeekTime:		equ	$16 ; MSCSEEKT; stop CD playback at a specific time
-MusicSeekPlayOnce:	equ	$19	; MSCSEEK1; stop CD playback after reaching a specific track
+MusicPlayAtTime:	equ	$14	; MSCPLAYT;	start playback from a specific time
+MusicSeek:			equ	$15	; MSCSEEK; seek to start of selected track and pause
+MusicSeekTime:		equ	$16 ; MSCSEEKT; seek to a specific time
+MusicSeekPlayOnce:	equ	$19	; MSCSEEK1; same as MusicSeek, except track is played only once
 FaderSet:			equ	$85 ; FDRSET; set CD audio volume
 FaderChg:			equ	$86 ; FDRGHG; change CD audio volume at a specified speed
 

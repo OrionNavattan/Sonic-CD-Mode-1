@@ -255,6 +255,7 @@ SetupValues:
 
 		dc.l	vram_dma				; DMA fill VRAM
 		dc.w	(sizeof_workram/4)-1	; workram clear loop counter
+		; size of keep_after_reset
 		dc.w	vdp_auto_inc+2				; VDP increment
 		dc.l	vsram_write				; VSRAM write mode
 		dc.l	cram_write				; CRAM write mode
@@ -335,8 +336,8 @@ InitFailure3:
 
 InitFailure2:
 		addq.b	#2,d3		; 2 = unidentified sub CPU
-
-InitFailure1:				; 0 = no sub CPU found
+							; 0 = no sub CPU found
+InitFailure1:
 		disable_ints
 		lea	-sizeof_Console_RAM(sp),sp
 		lea (sp),a3
@@ -346,19 +347,10 @@ InitFailure1:				; 0 = no sub CPU found
 		popr.w	d3
 
 		move.w	FailureText_Index(pc,d3.w),d3
-		lea FailureText_Index-4(pc,d3.w),a5		; a5 = start of data for failure message
-		moveq	#0,d0					; d0 = starting x pos
-		movem.w	(a5)+,d1/d5			; d1 = starting y pos; d5 = loop counter
+		lea	FailureText_Index(pc,d3.w),a0	; a0 = failure message data
+		movem.w	(a0)+,d0/d1			; d0/d1 = starting x and y pos
 		jsr	(Console_SetPosAsXY).l		; set starting pos for message
-		moveq	#0,d4			; first line of message
-
-	.loop:
-		move.w	(a5,d4.w),d3
-		lea	(a5,d3.w),a0	; a0 = line of message
-		jsr	(Console_WriteLine).l	; write line
-		jsr	(Console_StartNewLine).l		; skip a line
-		addq.w	#2,d4		; next line
-		dbf	d5,.loop		; repeat for all lines of message
+		jsr	(Console_WriteLine).l	; write message
 
 	.done:
 		nop
@@ -367,69 +359,39 @@ InitFailure1:				; 0 = no sub CPU found
 ; ===========================================================================
 
 FailureText_Index:	index offset(*),,2
-		ptr	SubCPU_NotFound_Index	; 0
-		ptr	SubCPU_NotIdentified_Index ; 2
-		ptr	SubCPU_Unresponsive_Index ; 4
+		ptr	SubCPU_NotFound	; 0
+		ptr	SubCPU_NotIdentified	; 2
+		ptr	SubCPU_Unresponsive	; 4
 ; ===========================================================================
 
-		dc.w	10,(sizeof_SubCPU_NotFound_Index/2)-1	; y pos, loop counter
-SubCPU_NotFound_Index:	index offset(*),,2
-		ptr	.line1
-		ptr	.line2
-		ptr	.line3
-		ptr	.line4
-	;	ptr	.line5
-		arraysize	SubCPU_NotFound_Index
+SubCPU_NotFound:
+		dc.w	4,9	; initial x/y pos
+		dc.b	'Sorry, this program requires the',endl
+		dc.b	setx,2,'Mega CD/Sega CD addon or an emulator',endl
+		dc.b	setx,4,'with Mega CD Mode 1 support and',endl
+		dc.b	setx,7,'a properly configured BIOS.',endl,endl
 
-
-.line1:	dc.b	'    Sorry, this program requires the    ',0
-		even
-.line2:	dc.b	'  Mega CD/Sega CD addon or an emulator  ',0
-		even
-.line3:	dc.b	'    with Mega CD Mode 1 support and     ',0
-		even
-.line4:	dc.b	'       a properly configured BIOS.      ',0
-		even
-;.line5:	dc.b	'    configured BIOS.    ',0
-;		even
-; ===========================================================================
-
-		dc.w	9,(sizeof_SubCPU_NotIdentified_Index/2)-1	; y pos, loop counter
-SubCPU_NotIdentified_Index:	index offset(*),,2
-		ptr	.line1
-		ptr	.line2
-		ptr	.line3
-		ptr	.line4
-		ptr	.line5
-		arraysize	SubCPU_NotIdentified_Index
-
-
-.line1:	dc.b	'   A Mega CD device was detected, but   ',0
-		even
-.line2:	dc.b	'   it could not be identified. Please   ',0
-		even
-.line3:	dc.b	'     contact OrionNavattan, as this     ',0
-		even
-.line4:	dc.b	'      may be a previously unknown       ',0
-		even
-.line5:	dc.b	'            Mega CD device.             ',0
+		dc.b	setx,2,'(If a addon is connected, check that',endl
+		dc.b	setx,3,'it has power, as that may trigger',endl
+		dc.b	setx,6,'this message due to how the',endl
+		dc.b	setx,7,'detection process works.)',0
 		even
 ; ===========================================================================
 
-		dc.w	10,(sizeof_SubCPU_Unresponsive_Index/2)-1	; y pos, loop counter
-SubCPU_Unresponsive_Index:	index offset(*),,2
-		ptr	.line1
-		ptr	.line2
-		ptr	.line3
-		ptr	.line4
-		arraysize	SubCPU_Unresponsive_Index
+SubCPU_NotIdentified:
+		dc.w	3,11
+		dc.b	'A Mega CD device was detected, but',endl
+		dc.b	setx,3,'it could not be identified. Please',endl
+		dc.b	setx,5,'contact OrionNavattan, as this',endl
+		dc.b	setx,6,'may be a previously unknown',endl
+		dc.b	setx,12,'Mega CD device.',0
+		even
+; ===========================================================================
 
-
-.line1:	dc.b	'      The attached Mega CD device       ',0
-		even
-.line2:	dc.b	'    is not responding. Please verify    ',0
-		even
-.line3:	dc.b	'        that it is connected or         ',0
-		even
-.line4:	dc.b	'    otherwise functioning correctly.    ',0
+SubCPU_Unresponsive:
+		dc.w	6,11
+		dc.b	'The attached Mega CD device',endl
+		dc.b	setx,4,'is not responding. Please verify',endl
+		dc.b	setx,8,'that it is connected or',endl
+		dc.b	setx,4,'otherwise functioning correctly.',0
 		even
